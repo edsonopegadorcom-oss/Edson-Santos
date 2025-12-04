@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lielson Tattoo Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
+    <style>
+      /* Dynamic Theme Variables - will be updated by JS */
+      :root {
+        --primary: #111827; /* Default gray-900 */
+        --accent: #D97706; /* Default amber-600 */
+      }
+      
+      .bg-theme-primary { background-color: var(--primary); }
+      .text-theme-primary { color: var(--primary); }
+      .border-theme-primary { border-color: var(--primary); }
+      
+      .bg-theme-accent { background-color: var(--accent); }
+      .text-theme-accent { color: var(--accent); }
+      .border-theme-accent { border-color: var(--accent); }
+      
+      /* Toast Animation */
+      @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      .toast-enter { animation: slideIn 0.3s ease-out forwards; }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/"
+  }
+}
+</script>
+</head>
+  <body class="bg-gray-50 text-gray-800 antialiased">
+    <div id="root"></div>
+  </body>
+</html>
