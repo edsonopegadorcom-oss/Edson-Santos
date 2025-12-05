@@ -926,16 +926,10 @@ const PublicPage: React.FC = () => {
                  <>
                     {/* Hero with Tattoo Image */}
                     <header className="relative h-[600px] flex items-center justify-center text-center text-white overflow-hidden bg-gray-900">
-                        {/* Background Image - Replacing css background with img tag for better mobile support */}
-                        <img 
-                            src="https://images.unsplash.com/photo-1590246294580-8c22d6455217?q=80&w=2000&auto=format&fit=crop" 
-                            className="absolute inset-0 w-full h-full object-cover object-center"
-                            alt="Mulher com tatuagem"
-                        />
+                        {/* Background texture instead of specific photo */}
+                        <div className="absolute inset-0 opacity-30 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
                         
-                        {/* Dark Overlay */}
-                        <div className="absolute inset-0 bg-black/60"></div>
-                        <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-black/40"></div>
+                        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900"></div>
                         
                         <div className="relative z-10 max-w-3xl mx-auto px-6 animate-fadeIn">
                             <div className="mb-4 inline-block px-3 py-1 border border-white/30 rounded-full text-xs font-bold uppercase tracking-widest bg-white/10 backdrop-blur-md">
