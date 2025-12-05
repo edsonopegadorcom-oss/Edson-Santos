@@ -126,6 +126,13 @@ export const StorageService = {
     return snap.docs.map(d => ({ ...d.data(), id: d.id } as Appointment));
   },
 
+  // NEW: Get appointments by date to check availability
+  getAppointmentsByDate: async (date: string): Promise<Appointment[]> => {
+    const q = query(collection(db, C.APPOINTMENTS), where('date', '==', date));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Appointment));
+  },
+
   saveAppointment: async (appt: Appointment) => {
     // Firestore creates ID automatically if using addDoc, but we want to handle the ID object
     const { id, ...data } = appt; 
