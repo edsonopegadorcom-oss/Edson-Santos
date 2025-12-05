@@ -155,6 +155,9 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     };
     
     const stats = getStats();
+    
+    // Filter cancelled appointments for display
+    const visibleAppointments = appointments.filter(a => a.status !== AppointmentStatus.CANCELLED);
 
     if (!config) return <div className="h-screen flex items-center justify-center bg-gray-100 text-gray-500">Carregando Painel...</div>;
 
@@ -258,7 +261,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                     <h3 className="font-bold text-gray-700 mb-4 border-b pb-2">Últimos Agendamentos</h3>
-                                    {appointments.slice(0,5).map(a => (
+                                    {visibleAppointments.slice(0,5).map(a => (
                                         <div key={a.id} className="flex justify-between items-center py-3 border-b last:border-0 hover:bg-gray-50 px-2 transition">
                                             <div>
                                                 <p className="font-bold text-sm text-gray-800">{a.name}</p>
@@ -303,7 +306,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
-                                    {appointments.map(a => (
+                                    {visibleAppointments.map(a => (
                                         <tr key={a.id} className="hover:bg-blue-50 transition-colors">
                                             <td className="p-4">
                                                 <div className="font-bold text-gray-900">{a.date.split('-').reverse().join('/')}</div>
@@ -329,14 +332,12 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                                 {a.status === 'PENDENTE' && (
                                                     <button onClick={() => handleApptAction(a.id, AppointmentStatus.CONFIRMED)} className="text-white bg-green-500 hover:bg-green-600 w-8 h-8 rounded-full shadow transition" title="Confirmar"><i className="fas fa-check"></i></button>
                                                 )}
-                                                {a.status !== 'CANCELADO' && (
-                                                    <button onClick={() => handleApptAction(a.id, AppointmentStatus.CANCELLED)} className="text-white bg-red-400 hover:bg-red-500 w-8 h-8 rounded-full shadow transition" title="Cancelar"><i className="fas fa-times"></i></button>
-                                                )}
+                                                <button onClick={() => handleApptAction(a.id, AppointmentStatus.CANCELLED)} className="text-white bg-red-400 hover:bg-red-500 w-8 h-8 rounded-full shadow transition" title="Cancelar"><i className="fas fa-times"></i></button>
                                                 <button onClick={() => setViewDetail(a)} className="text-gray-600 bg-gray-200 hover:bg-gray-300 w-8 h-8 rounded-full shadow transition" title="Ver Detalhes"><i className="fas fa-eye"></i></button>
                                             </td>
                                         </tr>
                                     ))}
-                                    {appointments.length === 0 && (
+                                    {visibleAppointments.length === 0 && (
                                         <tr><td colSpan={5} className="p-8 text-center text-gray-400">Nenhum agendamento encontrado.</td></tr>
                                     )}
                                 </tbody>
@@ -836,24 +837,24 @@ const PublicPage: React.FC = () => {
     return (
         <div className="pb-20">
              {/* Navbar */}
-             <nav className="bg-white shadow-sm sticky top-0 z-40">
+             <nav className="bg-white shadow-sm sticky top-0 z-40 transition-all duration-300">
                 <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
                     <div className="flex items-center gap-2">
                         {config?.logoBase64 ? <img src={config.logoBase64} className="h-10 w-10 rounded-full object-cover"/> : <div className="h-10 w-10 bg-gray-900 rounded-full"></div>}
-                        <span className="font-bold text-lg hidden sm:block">Lielson Tattoo</span>
+                        <span className="font-bold text-lg hidden sm:block tracking-wide">Lielson Tattoo</span>
                     </div>
                     
                     {/* Center Nav Links */}
                     <div className="flex gap-1 bg-gray-100 p-1 rounded-full">
                         <button 
                             onClick={() => setPublicTab('home')}
-                            className={`px-4 py-1.5 rounded-full text-sm font-bold transition ${publicTab === 'home' ? 'bg-gray-900 text-white shadow' : 'text-gray-500 hover:text-gray-900'}`}
+                            className={`px-5 py-1.5 rounded-full text-sm font-bold transition-all duration-300 ${publicTab === 'home' ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}
                         >
                             Início
                         </button>
                         <button 
                             onClick={() => setPublicTab('shop')}
-                            className={`px-4 py-1.5 rounded-full text-sm font-bold transition ${publicTab === 'shop' ? 'bg-gray-900 text-white shadow' : 'text-gray-500 hover:text-gray-900'}`}
+                            className={`px-5 py-1.5 rounded-full text-sm font-bold transition-all duration-300 ${publicTab === 'shop' ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}
                         >
                             Loja
                         </button>
@@ -861,9 +862,9 @@ const PublicPage: React.FC = () => {
 
                     <div className="flex items-center gap-4">
                         <a href="#admin" className="text-xs font-bold text-gray-400 hover:text-theme-primary transition">ADMIN</a>
-                        <button onClick={() => setIsCartOpen(true)} className="relative p-2 text-gray-700 hover:text-theme-accent transition">
+                        <button onClick={() => setIsCartOpen(true)} className="relative p-2 text-gray-700 hover:text-theme-accent transition transform hover:scale-110">
                             <i className="fas fa-shopping-bag text-xl"></i>
-                            {cart.length > 0 && <span className="absolute top-0 right-0 bg-red-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">{cart.reduce((a,b)=>a+b.quantity,0)}</span>}
+                            {cart.length > 0 && <span className="absolute top-0 right-0 bg-red-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center animate-bounce">{cart.reduce((a,b)=>a+b.quantity,0)}</span>}
                         </button>
                     </div>
                 </div>
@@ -872,47 +873,73 @@ const PublicPage: React.FC = () => {
              {/* === HOME TAB === */}
              {publicTab === 'home' && (
                  <>
-                    {/* Hero */}
-                    <header className="bg-gray-900 text-white py-16 px-4 text-center relative overflow-hidden">
-                        <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]"></div>
-                        <div className="relative z-10 max-w-2xl mx-auto">
-                            <h1 className="text-4xl md:text-6xl font-extrabold mb-4 tracking-tight">Estilo e Arte na Pele</h1>
-                            <p className="text-gray-300 text-lg mb-8">Barbearia clássica e estúdio de tatuagem profissional.</p>
-                            <button onClick={() => document.getElementById('booking')?.scrollIntoView({behavior:'smooth'})} className="bg-theme-accent text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-opacity-90 transition">
-                                Agendar Horário
+                    {/* Hero with Tattoo Image */}
+                    <header className="relative h-[550px] flex items-center justify-center text-center text-white overflow-hidden">
+                        {/* Background Image */}
+                        <div className="absolute inset-0 bg-cover bg-center bg-no-repeat bg-fixed transform scale-105" style={{backgroundImage: "url('https://images.unsplash.com/photo-1590246294580-8c22d6455217?q=80&w=2000&auto=format&fit=crop')"}}></div>
+                        
+                        {/* Gradient Overlay for Text Readability */}
+                        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/80"></div>
+                        
+                        <div className="relative z-10 max-w-3xl mx-auto px-6 animate-fadeIn">
+                            <div className="mb-4 inline-block px-3 py-1 border border-white/30 rounded-full text-xs font-bold uppercase tracking-widest bg-white/10 backdrop-blur-md">
+                                Studio Profissional
+                            </div>
+                            <h1 className="text-5xl md:text-7xl font-extrabold mb-6 tracking-tight drop-shadow-xl leading-tight">
+                                Arte, Estilo & <span className="text-theme-accent">Atitude</span>
+                            </h1>
+                            <p className="text-gray-200 text-lg md:text-xl mb-10 max-w-xl mx-auto font-light drop-shadow-md">
+                                Transformando ideias em arte na pele e estilo no visual. Barbearia clássica e tatuagem exclusiva em um só lugar.
+                            </p>
+                            <button 
+                                onClick={() => document.getElementById('booking')?.scrollIntoView({behavior:'smooth'})} 
+                                className="bg-theme-accent hover:bg-yellow-600 text-white px-10 py-4 rounded-full font-bold text-lg shadow-2xl hover:shadow-orange-500/20 transition-all transform hover:-translate-y-1 active:scale-95 flex items-center gap-2 mx-auto"
+                            >
+                                <i className="fas fa-calendar-alt"></i> Agendar Agora
                             </button>
                         </div>
                     </header>
 
                     {/* Services / Booking Section */}
-                    <section id="booking" className="py-16 max-w-6xl mx-auto px-4">
-                        <div className="text-center mb-12">
-                            <h2 className="text-3xl font-bold text-gray-800">Nossos Serviços</h2>
-                            <div className="w-16 h-1 bg-theme-accent mx-auto mt-2 rounded"></div>
+                    <section id="booking" className="py-20 max-w-6xl mx-auto px-4 bg-gray-50">
+                        <div className="text-center mb-16">
+                            <span className="text-theme-accent font-bold uppercase tracking-wider text-sm">Nossos Serviços</span>
+                            <h2 className="text-4xl font-extrabold text-gray-900 mt-2">Escolha sua Experiência</h2>
+                            <div className="w-20 h-1.5 bg-theme-accent mx-auto mt-4 rounded-full"></div>
                         </div>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {/* Mobile Optimized Grid: 2 columns on mobile, 4 on desktop */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
                             {/* Dynamic Services from DB */}
                             {services.map((service) => (
-                                <div key={service.id} onClick={() => openBooking(service)} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer group text-center">
-                                    <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:bg-theme-accent group-hover:text-white transition-colors text-gray-700">
+                                <div key={service.id} onClick={() => openBooking(service)} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl hover:border-theme-accent/30 transition-all duration-300 cursor-pointer group text-center relative overflow-hidden">
+                                    <div className="absolute top-0 left-0 w-full h-1 bg-gray-100 group-hover:bg-theme-accent transition-colors duration-300"></div>
+                                    <div className="w-16 h-16 mx-auto bg-gray-50 rounded-full flex items-center justify-center text-3xl mb-5 group-hover:bg-theme-accent group-hover:text-white transition-all duration-300 text-gray-700 shadow-inner group-hover:scale-110">
                                         <i className={`fas fa-${service.icon}`}></i>
                                     </div>
-                                    <h3 className="font-bold text-lg mb-1">{service.name}</h3>
-                                    <p className="text-theme-accent font-bold">R$ {service.price.toFixed(2)}</p>
-                                    <p className="text-xs text-gray-400 mt-2">Clique para agendar</p>
+                                    <h3 className="font-bold text-lg text-gray-800 mb-1 group-hover:text-theme-accent transition-colors">{service.name}</h3>
+                                    <div className="flex items-center justify-center gap-1 text-gray-900 font-extrabold text-xl">
+                                        <span className="text-xs font-normal text-gray-500 self-start mt-1">R$</span>
+                                        {service.price.toFixed(2)}
+                                    </div>
+                                    <button className="mt-4 text-xs font-bold text-gray-400 group-hover:text-theme-accent uppercase tracking-wide flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                        Agendar <i className="fas fa-arrow-right"></i>
+                                    </button>
                                 </div>
                             ))}
                             
-                            {/* Static Tattoo Budget Service */}
-                            <div onClick={() => openBooking('tattoo')} className="bg-gray-900 text-white p-6 rounded-xl shadow-lg border border-gray-800 hover:scale-[1.02] transition cursor-pointer text-center relative overflow-hidden">
-                                <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
-                                <div className="relative z-10">
-                                    <div className="w-16 h-16 mx-auto bg-gray-800 rounded-full flex items-center justify-center text-3xl mb-4 text-theme-accent border-2 border-theme-accent">
+                            {/* Static Tattoo Budget Service - Featured Card */}
+                            <div onClick={() => openBooking('tattoo')} className="bg-gray-900 text-white p-6 rounded-2xl shadow-xl border border-gray-800 hover:scale-[1.03] transition-all duration-300 cursor-pointer text-center relative overflow-hidden group col-span-2 md:col-span-1">
+                                <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+                                <div className="relative z-10 flex flex-col items-center justify-center h-full">
+                                    <div className="w-16 h-16 mx-auto bg-gray-800 rounded-full flex items-center justify-center text-3xl mb-4 text-theme-accent border-2 border-theme-accent shadow-[0_0_15px_rgba(217,119,6,0.3)] animate-pulse-slow">
                                         <i className="fas fa-dragon"></i>
                                     </div>
-                                    <h3 className="font-bold text-lg mb-1">Orçamento Tattoo</h3>
-                                    <p className="text-gray-400 text-sm">Envie sua ideia</p>
+                                    <h3 className="font-bold text-lg mb-1 text-white">Orçamento Tattoo</h3>
+                                    <p className="text-gray-400 text-xs mb-3">Envie sua ideia e agende uma sessão exclusiva.</p>
+                                    <span className="inline-block bg-theme-accent text-white text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wide shadow-lg transform group-hover:-translate-y-0.5 transition-transform">
+                                        Fazer Orçamento
+                                    </span>
                                 </div>
                             </div>
                         </div>
