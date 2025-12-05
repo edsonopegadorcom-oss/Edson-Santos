@@ -18,9 +18,17 @@ export enum OrderStatus {
   CANCELLED = 'CANCELADO'
 }
 
+export interface ServiceItem {
+  id: string;
+  name: string;
+  price: number;
+  icon: string; // FontAwesome class suffix (e.g., 'cut')
+  active: boolean;
+}
+
 export interface Appointment {
   id: string;
-  serviceId: string; // ServiceType or 'custom-tattoo'
+  serviceId: string; // ServiceItem ID or 'custom-tattoo'
   serviceName: string;
   price: number;
   name: string;

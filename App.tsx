@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Layout, Modal } from './components/Layout';
 import { CartSidebar } from './components/CartSidebar';
 import { 
-  Appointment, Product, Category, ServiceType, 
+  Appointment, Product, Category, ServiceItem, 
   AppointmentStatus, Order, OrderStatus, CartItem, AdminConfig 
 } from './types';
 import { StorageService, generateId, simpleHash } from './services/storageService';
@@ -11,11 +11,12 @@ import { StorageService, generateId, simpleHash } from './services/storageServic
 
 // --- 1. ADMIN PANEL (Re-designed) ---
 const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'appointments' | 'orders' | 'products' | 'config'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'appointments' | 'orders' | 'products' | 'services' | 'config'>('dashboard');
     const [config, setConfig] = useState<AdminConfig | null>(null);
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
+    const [services, setServices] = useState<ServiceItem[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [viewDetail, setViewDetail] = useState<any>(null);
 
@@ -23,6 +24,9 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     const [newLogo, setNewLogo] = useState('');
     const [editEmail, setEditEmail] = useState('');
     const [editPass, setEditPass] = useState('');
+
+    // Service Form State
+    const [newService, setNewService] = useState<Partial<ServiceItem>>({ icon: 'cut', active: true });
 
     // Realtime Subscriptions & Async Load
     useEffect(() => {
@@ -38,11 +42,13 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         const unsubAppt = StorageService.subscribeAppointments(setAppointments);
         const unsubOrders = StorageService.subscribeOrders(setOrders);
         const unsubProds = StorageService.subscribeProducts(setProducts);
+        const unsubServices = StorageService.subscribeServices(setServices);
 
         return () => {
             unsubAppt();
             unsubOrders();
             unsubProds();
+            unsubServices();
         };
     }, []);
 
@@ -70,7 +76,8 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         if (!newProd.name || !newProd.price) return alert("Preencha dados básicos");
         const prod: Product = {
             id: generateId(),
-            categoryId: newProd.categoryId || categories[0]?.id || 'c1',
+            // Default to 'barbearia' if not selected
+            categoryId: newProd.categoryId || 'barbearia', 
             name: newProd.name,
             description: newProd.description || '',
             price: Number(newProd.price),
@@ -82,6 +89,26 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         setProdImg('');
         alert("Produto Salvo!");
     };
+
+    const saveService = async () => {
+        if (!newService.name || !newService.price) return alert("Preencha nome e preço");
+        const service: ServiceItem = {
+            id: newService.id || generateId(),
+            name: newService.name,
+            price: Number(newService.price),
+            icon: newService.icon || 'cut',
+            active: true
+        };
+        await StorageService.saveService(service);
+        setNewService({ icon: 'cut', active: true });
+        alert("Serviço Salvo!");
+    };
+
+    const deleteService = async (id: string) => {
+        if(confirm("Tem certeza que deseja excluir este serviço?")) {
+            await StorageService.deleteService(id);
+        }
+    }
 
     // Config Save Logic
     const saveConfig = async () => {
@@ -161,6 +188,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 <nav className="flex-1 py-6 space-y-1">
                     <SidebarItem id="dashboard" icon="chart-line" label="Visão Geral" />
                     <SidebarItem id="appointments" icon="calendar-check" label="Agendamentos" />
+                    <SidebarItem id="services" icon="cut" label="Serviços" />
                     <SidebarItem id="orders" icon="shopping-bag" label="Pedidos" />
                     <SidebarItem id="products" icon="box-open" label="Produtos" />
                     <SidebarItem id="config" icon="cog" label="Configurações" />
@@ -172,9 +200,6 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                     </button>
                 </div>
             </aside>
-
-            {/* Mobile Header (Only visible on small screens) */}
-            {/* For simplicity in this demo, we assume desktop admin usage or stacked layout on mobile would require more responsive css work, keeping it simple */}
             
             {/* Main Content */}
             <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
@@ -318,6 +343,71 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                             </table>
                         </div>
                     )}
+                    
+                    {activeTab === 'services' && (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                             <div className="lg:col-span-1">
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 sticky top-4">
+                                    <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><i className="fas fa-plus-circle text-theme-accent"></i> Novo Serviço</h3>
+                                    <div className="space-y-4">
+                                        <input className="w-full border bg-gray-50 p-2 rounded focus:ring-2 focus:ring-theme-accent outline-none" placeholder="Nome do Serviço" value={newService.name || ''} onChange={e => setNewService({...newService, name: e.target.value})} />
+                                        <div className="flex gap-2">
+                                            <input className="w-full border bg-gray-50 p-2 rounded focus:ring-2 focus:ring-theme-accent outline-none" type="number" placeholder="Preço (R$)" value={newService.price || ''} onChange={e => setNewService({...newService, price: parseFloat(e.target.value)})} />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-500 mb-1 block">Ícone</label>
+                                            <div className="grid grid-cols-5 gap-2">
+                                                {['cut', 'user-tie', 'shoe-prints', 'star', 'fire', 'hand-sparkles', 'spray-can', 'skull'].map(ic => (
+                                                    <button key={ic} onClick={() => setNewService({...newService, icon: ic})} className={`p-2 rounded border ${newService.icon === ic ? 'bg-theme-accent text-white border-transparent' : 'bg-gray-50 text-gray-500 hover:bg-gray-200'}`}>
+                                                        <i className={`fas fa-${ic}`}></i>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <button onClick={saveService} className="w-full bg-theme-accent text-white font-bold py-2 rounded hover:shadow-lg transition">Salvar Serviço</button>
+                                    </div>
+                                </div>
+                             </div>
+
+                             <div className="lg:col-span-2 space-y-4">
+                                 {services.map(s => (
+                                     <div key={s.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4">
+                                         <div className="h-12 w-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 text-xl">
+                                             <i className={`fas fa-${s.icon}`}></i>
+                                         </div>
+                                         <div className="flex-1">
+                                             <input 
+                                                className="font-bold text-gray-800 border-b border-transparent hover:border-gray-300 focus:border-theme-accent outline-none bg-transparent"
+                                                value={s.name}
+                                                onChange={(e) => {
+                                                    const updated = services.map(x => x.id === s.id ? {...x, name: e.target.value} : x);
+                                                    setServices(updated);
+                                                }}
+                                                onBlur={() => StorageService.saveService(s)}
+                                             />
+                                         </div>
+                                         <div className="flex items-center gap-4">
+                                             <div className="relative">
+                                                 <span className="absolute left-2 top-1 text-xs text-gray-400">R$</span>
+                                                 <input 
+                                                    type="number"
+                                                    className="w-20 pl-6 pr-2 py-1 border rounded text-right font-bold text-gray-800 outline-none focus:border-theme-accent"
+                                                    value={s.price}
+                                                    onChange={(e) => {
+                                                        const val = parseFloat(e.target.value);
+                                                        const updated = services.map(x => x.id === s.id ? {...x, price: val} : x);
+                                                        setServices(updated);
+                                                    }}
+                                                    onBlur={() => StorageService.saveService(s)}
+                                                 />
+                                             </div>
+                                             <button onClick={() => deleteService(s.id)} className="text-red-400 hover:text-red-600 transition p-2"><i className="fas fa-trash"></i></button>
+                                         </div>
+                                     </div>
+                                 ))}
+                             </div>
+                        </div>
+                    )}
 
                     {activeTab === 'orders' && (
                         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -384,9 +474,16 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                             <input className="w-full border bg-gray-50 p-2 rounded focus:ring-2 focus:ring-theme-accent outline-none" type="number" placeholder="Preço" value={newProd.price || ''} onChange={e => setNewProd({...newProd, price: parseFloat(e.target.value)})} />
                                             <input className="w-full border bg-gray-50 p-2 rounded focus:ring-2 focus:ring-theme-accent outline-none" type="number" placeholder="Qtd" value={newProd.stock || ''} onChange={e => setNewProd({...newProd, stock: parseInt(e.target.value)})} />
                                         </div>
-                                        <select className="w-full border bg-gray-50 p-2 rounded focus:ring-2 focus:ring-theme-accent outline-none" value={newProd.categoryId} onChange={e => setNewProd({...newProd, categoryId: e.target.value})}>
-                                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        {/* Restricted Categories for Admin Input */}
+                                        <select 
+                                            className="w-full border bg-gray-50 p-2 rounded focus:ring-2 focus:ring-theme-accent outline-none" 
+                                            value={newProd.categoryId} 
+                                            onChange={e => setNewProd({...newProd, categoryId: e.target.value})}
+                                        >
+                                            <option value="barbearia">Produto de Barbearia</option>
+                                            <option value="roupas">Produto da Loja de Roupas</option>
                                         </select>
+                                        
                                         <div className="border-2 border-dashed border-gray-300 rounded p-4 text-center cursor-pointer hover:bg-gray-50 relative">
                                             <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={async (e) => {
                                                 if(e.target.files && e.target.files[0]) {
@@ -414,7 +511,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                          </div>
                                          <div className="flex-1">
                                              <h4 className="font-bold text-gray-800">{p.name}</h4>
-                                             <p className="text-xs text-gray-500">{categories.find(c => c.id === p.categoryId)?.name}</p>
+                                             <p className="text-xs text-gray-500">{categories.find(c => c.id === p.categoryId)?.name || (p.categoryId === 'barbearia' ? 'Produto de Barbearia' : p.categoryId === 'roupas' ? 'Produto da Loja de Roupas' : 'Outros')}</p>
                                          </div>
                                          <div className="text-right">
                                              <p className="font-bold text-gray-800">R$ {p.price.toFixed(2)}</p>
@@ -620,463 +717,436 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     );
 };
 
-// --- 2. PUBLIC PAGE ---
+// --- PUBLIC PAGE ---
 const PublicPage: React.FC = () => {
     const [config, setConfig] = useState<AdminConfig | null>(null);
-    const [cartOpen, setCartOpen] = useState(false);
-    const [cart, setCart] = useState<CartItem[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
-    const [categories, setCategories] = useState<Category[]>([]);
-    const [activeCat, setActiveCat] = useState('all');
-
-    // Appointment Form State
-    const [apptForm, setApptForm] = useState({
-        service: ServiceType.HAIRCUT as string,
-        name: '',
-        phone: '',
-        date: '',
-        time: '',
-        notes: '',
-        tattooSize: '',
-        tattooLocation: ''
-    });
-    const [tattooImg, setTattooImg] = useState('');
-    const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+    const [services, setServices] = useState<ServiceItem[]>([]);
+    const [cart, setCart] = useState<CartItem[]>([]);
+    const [isCartOpen, setIsCartOpen] = useState(false);
     
-    // Order Modal State
-    const [checkoutOpen, setCheckoutOpen] = useState(false);
-    const [checkoutData, setCheckoutData] = useState<Partial<Order>>({ delivery: false, paymentMethod: 'money' });
-    const [orderSummary, setOrderSummary] = useState({sub: 0, disc: 0, total: 0, code: ''});
+    // Public Navigation State
+    const [publicTab, setPublicTab] = useState<'home' | 'shop'>('home');
+    
+    // Booking
+    const [showBooking, setShowBooking] = useState(false);
+    const [selectedService, setSelectedService] = useState<ServiceItem | 'tattoo' | null>(null);
+    const [bookingForm, setBookingForm] = useState({
+        name: '', phone: '', date: '', time: '', notes: '', tattooSize: '', tattooLocation: ''
+    });
+    const [tattooRefImg, setTattooRefImg] = useState('');
 
-    // Helper for Service Options
-    const SERVICE_OPTIONS = [
-        { id: ServiceType.HAIRCUT, icon: 'fa-cut', price: 25, label: 'Corte de Cabelo' },
-        { id: ServiceType.BEARD, icon: 'fa-user-tie', price: 9, label: 'Barba' },
-        { id: ServiceType.FOOT, icon: 'fa-shoe-prints', price: 10, label: 'Pé de Cabelo' },
-        { id: 'custom-tattoo', icon: 'fa-dragon', price: 0, label: 'Tatuagem (Orçamento)' },
-    ];
+    // Checkout
+    const [showCheckout, setShowCheckout] = useState(false);
+    const [checkoutData, setCheckoutData] = useState<{subtotal:number, discount:number, total:number, coupon?:string} | null>(null);
+    const [orderForm, setOrderForm] = useState({
+        name: '', phone: '', method: 'pix' as 'money'|'card'|'pix', delivery: false,
+        address: { neighborhood: '', street: '', number: '', reference: '' },
+        changeFor: ''
+    });
 
-    // Load Data Async
     useEffect(() => {
-        const load = async () => {
-            const c = await StorageService.getConfig();
-            setConfig(c);
-            const p = await StorageService.getProducts();
-            setProducts(p);
-            const cats = await StorageService.getCategories();
-            setCategories(cats);
+        const init = async () => {
+            setConfig(await StorageService.getConfig());
+            setProducts(await StorageService.getProducts());
+            setServices(await StorageService.getServices());
         };
-        load();
+        init();
     }, []);
 
-    // Time Slot Logic (Async fetch of existing appointments)
-    useEffect(() => {
-        if (!apptForm.date || !config) return;
-        
-        // Check if date is closed
-        if (config.closedDates.includes(apptForm.date)) {
-            setAvailableSlots([]);
-            return;
-        }
-
-        const fetchSlots = async () => {
-            // Optimization: In a real large app, query only for this date. 
-            // For now, we fetch all (as per previous logic) but async.
-            const existing = await StorageService.getAppointmentsOnce();
-            
-            const allSlots = ['09:00','09:30','10:00','10:30','11:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00'];
-            
-            const taken = existing
-                .filter(a => a.date === apptForm.date && a.status !== AppointmentStatus.CANCELLED)
-                .map(a => a.time);
-            
-            setAvailableSlots(allSlots.filter(s => !taken.includes(s)));
-        };
-        fetchSlots();
-
-    }, [apptForm.date, config]);
-
-    const handleAddToCart = (p: Product) => {
+    const addToCart = (product: Product) => {
         setCart(prev => {
-            const exists = prev.find(i => i.id === p.id);
-            if (exists) {
-                if(exists.quantity >= p.stock) {
-                    alert("Estoque insuficiente");
-                    return prev;
-                }
-                return prev.map(i => i.id === p.id ? { ...i, quantity: i.quantity + 1 } : i);
+            const existing = prev.find(p => p.id === product.id);
+            if(existing) {
+                return prev.map(p => p.id === product.id ? {...p, quantity: p.quantity + 1} : p);
             }
-            return [...prev, { ...p, quantity: 1 }];
+            return [...prev, {...product, quantity: 1}];
         });
-        setCartOpen(true);
+        setIsCartOpen(true);
     };
 
-    const submitAppointment = async () => {
-        if (!apptForm.name || !apptForm.phone || !apptForm.date || !apptForm.time) {
-            alert("Preencha todos os campos obrigatórios");
-            return;
-        }
+    const submitBooking = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if(!selectedService) return;
+        
+        const isTattoo = selectedService === 'tattoo';
+        const svcPrice = isTattoo ? 0 : (selectedService as ServiceItem).price;
 
         const appt: Appointment = {
             id: generateId(),
-            serviceId: apptForm.service,
-            serviceName: apptForm.service === 'custom-tattoo' ? 'Tatuagem Personalizada' : apptForm.service,
-            price: apptForm.service === ServiceType.HAIRCUT ? 25 : apptForm.service === ServiceType.BEARD ? 9 : apptForm.service === ServiceType.FOOT ? 10 : 0,
-            name: apptForm.name,
-            phone: apptForm.phone,
-            date: apptForm.date,
-            time: apptForm.time,
+            serviceId: isTattoo ? 'custom-tattoo' : (selectedService as ServiceItem).id,
+            serviceName: isTattoo ? 'Tatuagem (Orçamento)' : (selectedService as ServiceItem).name,
+            price: svcPrice,
+            name: bookingForm.name,
+            phone: bookingForm.phone,
+            date: bookingForm.date,
+            time: bookingForm.time,
             status: AppointmentStatus.PENDING,
-            tattooBase64: tattooImg,
-            tattooSize: apptForm.tattooSize,
-            tattooLocation: apptForm.tattooLocation,
-            notes: apptForm.notes,
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            notes: bookingForm.notes,
+            tattooBase64: tattooRefImg,
+            tattooSize: bookingForm.tattooSize,
+            tattooLocation: bookingForm.tattooLocation
         };
 
         await StorageService.saveAppointment(appt);
-        
-        alert(`Agendamento enviado com sucesso! Aguarde a confirmação no WhatsApp.`);
-        setApptForm({ ...apptForm, name: '', phone: '', date: '', time: '' });
-        setTattooImg('');
-        // Trigger re-fetch of slots
-        const tempDate = apptForm.date;
-        setApptForm(prev => ({...prev, date: ''}));
-        setTimeout(() => setApptForm(prev => ({...prev, date: tempDate})), 100);
+        alert('Agendamento solicitado! Aguarde confirmação pelo WhatsApp.');
+        setShowBooking(false);
+        setBookingForm({ name: '', phone: '', date: '', time: '', notes: '', tattooSize: '', tattooLocation: '' });
+        setTattooRefImg('');
     };
 
-    const submitOrder = async () => {
-        if (!checkoutData.clientName || !checkoutData.phone) return alert("Nome e Telefone são obrigatórios");
-        if (checkoutData.delivery && (!checkoutData.address?.street || !checkoutData.address.neighborhood)) return alert("Endereço incompleto");
+    const submitOrder = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if(!checkoutData) return;
 
         const order: Order = {
             id: generateId(),
             items: cart,
-            clientName: checkoutData.clientName!,
-            phone: checkoutData.phone!,
-            delivery: checkoutData.delivery || false,
-            deliveryFee: checkoutData.delivery ? 7.00 : 0,
-            address: checkoutData.address as any,
-            paymentMethod: checkoutData.paymentMethod as any,
-            changeFor: checkoutData.changeFor,
-            subtotal: orderSummary.sub,
-            discount: orderSummary.disc,
-            total: orderSummary.total + (checkoutData.delivery ? 7.00 : 0),
-            couponCode: orderSummary.code,
+            clientName: orderForm.name,
+            phone: orderForm.phone,
+            delivery: orderForm.delivery,
+            deliveryFee: orderForm.delivery ? 5 : 0, // Taxa fixa exemplo
+            address: orderForm.delivery ? orderForm.address : undefined,
+            paymentMethod: orderForm.method,
+            changeFor: orderForm.method === 'money' ? parseFloat(orderForm.changeFor) : undefined,
+            subtotal: checkoutData.subtotal,
+            discount: checkoutData.discount,
+            total: checkoutData.total + (orderForm.delivery ? 5 : 0),
+            couponCode: checkoutData.coupon,
             status: OrderStatus.PENDING,
             createdAt: Date.now()
         };
 
         await StorageService.saveOrder(order);
-        
-        alert("Pedido Enviado! Entraremos em contato.");
+        alert('Pedido realizado com sucesso! Acompanhe pelo WhatsApp.');
         setCart([]);
-        setCartOpen(false);
-        setCheckoutOpen(false);
+        setShowCheckout(false);
+        setCheckoutData(null);
     };
 
-    const inputClasses = "w-full border border-gray-600 bg-gray-700 text-white p-2 rounded focus:ring-2 focus:ring-theme-accent outline-none placeholder-gray-400";
-    const selectedService = SERVICE_OPTIONS.find(s => s.id === apptForm.service);
+    const openBooking = (svc: ServiceItem | 'tattoo') => {
+        setSelectedService(svc);
+        setShowBooking(true);
+    };
 
-    if (!config) return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Carregando...</div>;
+    const barberProducts = products.filter(p => p.categoryId === 'barbearia');
+    const clothesProducts = products.filter(p => p.categoryId === 'roupas');
 
     return (
-        <div className="pb-20 bg-gray-900 min-h-screen">
-            {/* Header */}
-            <header className="bg-theme-primary text-white p-4 shadow-md sticky top-0 z-40 transition-all duration-300 border-b border-gray-800">
-                <div className="container mx-auto flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        {config.logoBase64 ? (
-                             <img src={config.logoBase64} className="h-12 w-12 md:h-14 md:w-14 rounded-full object-cover border-2 border-theme-accent"/>
-                        ) : (
-                            <div className="h-12 w-12 bg-gray-800 rounded-full flex items-center justify-center border-2 border-theme-accent text-theme-accent">
-                                <i className="fas fa-dragon text-2xl"></i>
+        <div className="pb-20">
+             {/* Navbar */}
+             <nav className="bg-white shadow-sm sticky top-0 z-40">
+                <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                        {config?.logoBase64 ? <img src={config.logoBase64} className="h-10 w-10 rounded-full object-cover"/> : <div className="h-10 w-10 bg-gray-900 rounded-full"></div>}
+                        <span className="font-bold text-lg hidden sm:block">Lielson Tattoo</span>
+                    </div>
+                    
+                    {/* Center Nav Links */}
+                    <div className="flex gap-1 bg-gray-100 p-1 rounded-full">
+                        <button 
+                            onClick={() => setPublicTab('home')}
+                            className={`px-4 py-1.5 rounded-full text-sm font-bold transition ${publicTab === 'home' ? 'bg-gray-900 text-white shadow' : 'text-gray-500 hover:text-gray-900'}`}
+                        >
+                            Início
+                        </button>
+                        <button 
+                            onClick={() => setPublicTab('shop')}
+                            className={`px-4 py-1.5 rounded-full text-sm font-bold transition ${publicTab === 'shop' ? 'bg-gray-900 text-white shadow' : 'text-gray-500 hover:text-gray-900'}`}
+                        >
+                            Loja
+                        </button>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                        <a href="#admin" className="text-xs font-bold text-gray-400 hover:text-theme-primary transition">ADMIN</a>
+                        <button onClick={() => setIsCartOpen(true)} className="relative p-2 text-gray-700 hover:text-theme-accent transition">
+                            <i className="fas fa-shopping-bag text-xl"></i>
+                            {cart.length > 0 && <span className="absolute top-0 right-0 bg-red-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">{cart.reduce((a,b)=>a+b.quantity,0)}</span>}
+                        </button>
+                    </div>
+                </div>
+             </nav>
+
+             {/* === HOME TAB === */}
+             {publicTab === 'home' && (
+                 <>
+                    {/* Hero */}
+                    <header className="bg-gray-900 text-white py-16 px-4 text-center relative overflow-hidden">
+                        <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]"></div>
+                        <div className="relative z-10 max-w-2xl mx-auto">
+                            <h1 className="text-4xl md:text-6xl font-extrabold mb-4 tracking-tight">Estilo e Arte na Pele</h1>
+                            <p className="text-gray-300 text-lg mb-8">Barbearia clássica e estúdio de tatuagem profissional.</p>
+                            <button onClick={() => document.getElementById('booking')?.scrollIntoView({behavior:'smooth'})} className="bg-theme-accent text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-opacity-90 transition">
+                                Agendar Horário
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* Services / Booking Section */}
+                    <section id="booking" className="py-16 max-w-6xl mx-auto px-4">
+                        <div className="text-center mb-12">
+                            <h2 className="text-3xl font-bold text-gray-800">Nossos Serviços</h2>
+                            <div className="w-16 h-1 bg-theme-accent mx-auto mt-2 rounded"></div>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            {/* Dynamic Services from DB */}
+                            {services.map((service) => (
+                                <div key={service.id} onClick={() => openBooking(service)} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer group text-center">
+                                    <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:bg-theme-accent group-hover:text-white transition-colors text-gray-700">
+                                        <i className={`fas fa-${service.icon}`}></i>
+                                    </div>
+                                    <h3 className="font-bold text-lg mb-1">{service.name}</h3>
+                                    <p className="text-theme-accent font-bold">R$ {service.price.toFixed(2)}</p>
+                                    <p className="text-xs text-gray-400 mt-2">Clique para agendar</p>
+                                </div>
+                            ))}
+                            
+                            {/* Static Tattoo Budget Service */}
+                            <div onClick={() => openBooking('tattoo')} className="bg-gray-900 text-white p-6 rounded-xl shadow-lg border border-gray-800 hover:scale-[1.02] transition cursor-pointer text-center relative overflow-hidden">
+                                <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+                                <div className="relative z-10">
+                                    <div className="w-16 h-16 mx-auto bg-gray-800 rounded-full flex items-center justify-center text-3xl mb-4 text-theme-accent border-2 border-theme-accent">
+                                        <i className="fas fa-dragon"></i>
+                                    </div>
+                                    <h3 className="font-bold text-lg mb-1">Orçamento Tattoo</h3>
+                                    <p className="text-gray-400 text-sm">Envie sua ideia</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                 </>
+             )}
+
+             {/* === SHOP TAB === */}
+             {publicTab === 'shop' && (
+                 <div className="min-h-screen bg-gray-50">
+                    <header className="bg-white border-b py-8 text-center">
+                        <h1 className="text-3xl font-bold text-gray-800">Loja Oficial</h1>
+                        <p className="text-gray-500">Produtos selecionados para o seu estilo.</p>
+                    </header>
+                    
+                    <div className="max-w-6xl mx-auto px-4 py-12 space-y-16">
+                        
+                        {/* Section 1: Barber */}
+                        <div>
+                            <div className="flex items-center gap-4 mb-6">
+                                <div className="h-10 w-10 bg-gray-900 text-white rounded flex items-center justify-center text-xl"><i className="fas fa-pump-soap"></i></div>
+                                <h2 className="text-2xl font-bold text-gray-800">Barbearia & Cuidados</h2>
+                            </div>
+                            
+                            {barberProducts.length === 0 ? (
+                                <p className="text-gray-400 italic">Nenhum produto cadastrado nesta categoria.</p>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                                    {barberProducts.map(p => (
+                                        <div key={p.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-all duration-300 group">
+                                            <div className="h-48 bg-gray-100 relative overflow-hidden">
+                                                {p.imageBase64 ? (
+                                                    <img src={p.imageBase64} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center text-gray-300"><i className="fas fa-image text-3xl"></i></div>
+                                                )}
+                                                {p.stock <= 0 && <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center text-white font-bold uppercase tracking-wider">Esgotado</div>}
+                                            </div>
+                                            <div className="p-4">
+                                                <h4 className="font-bold text-gray-800 truncate mb-1" title={p.name}>{p.name}</h4>
+                                                <p className="text-theme-accent font-bold text-lg mb-3">R$ {p.price.toFixed(2)}</p>
+                                                <button 
+                                                    disabled={p.stock <= 0}
+                                                    onClick={() => addToCart(p)}
+                                                    className={`w-full py-2 rounded-lg font-bold text-sm transition ${p.stock > 0 ? 'bg-gray-900 text-white hover:bg-gray-800' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                                                >
+                                                    {p.stock > 0 ? 'Adicionar' : 'Indisponível'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <hr className="border-gray-200" />
+
+                        {/* Section 2: Clothes */}
+                        <div>
+                            <div className="flex items-center gap-4 mb-6">
+                                <div className="h-10 w-10 bg-theme-accent text-white rounded flex items-center justify-center text-xl"><i className="fas fa-tshirt"></i></div>
+                                <h2 className="text-2xl font-bold text-gray-800">Estilo & Roupas</h2>
+                            </div>
+
+                            {clothesProducts.length === 0 ? (
+                                <p className="text-gray-400 italic">Nenhum produto cadastrado nesta categoria.</p>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                                    {clothesProducts.map(p => (
+                                        <div key={p.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-all duration-300 group">
+                                            <div className="h-48 bg-gray-100 relative overflow-hidden">
+                                                {p.imageBase64 ? (
+                                                    <img src={p.imageBase64} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center text-gray-300"><i className="fas fa-image text-3xl"></i></div>
+                                                )}
+                                                {p.stock <= 0 && <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center text-white font-bold uppercase tracking-wider">Esgotado</div>}
+                                            </div>
+                                            <div className="p-4">
+                                                <h4 className="font-bold text-gray-800 truncate mb-1" title={p.name}>{p.name}</h4>
+                                                <p className="text-theme-accent font-bold text-lg mb-3">R$ {p.price.toFixed(2)}</p>
+                                                <button 
+                                                    disabled={p.stock <= 0}
+                                                    onClick={() => addToCart(p)}
+                                                    className={`w-full py-2 rounded-lg font-bold text-sm transition ${p.stock > 0 ? 'bg-gray-900 text-white hover:bg-gray-800' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                                                >
+                                                    {p.stock > 0 ? 'Adicionar' : 'Indisponível'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                    </div>
+                 </div>
+             )}
+
+             {/* Footer - Always Visible */}
+             <footer className="bg-gray-900 text-white py-12 px-4 border-t border-gray-800 text-center">
+                 <div className="max-w-4xl mx-auto">
+                    {config?.logoBase64 && <img src={config.logoBase64} className="h-16 w-16 rounded-full object-cover mx-auto mb-4 border-2 border-theme-accent" />}
+                    <h3 className="text-xl font-bold mb-2">Lielson Tattoo Studio</h3>
+                    <p className="text-gray-500 text-sm mb-6">Arte, estilo e atitude em um só lugar.</p>
+                    <div className="flex justify-center gap-6 text-2xl text-gray-400">
+                        <a href="#" className="hover:text-white transition"><i className="fab fa-instagram"></i></a>
+                        <a href="#" className="hover:text-white transition"><i className="fab fa-whatsapp"></i></a>
+                        <a href="#" className="hover:text-white transition"><i className="fab fa-facebook"></i></a>
+                    </div>
+                    <p className="text-gray-700 text-xs mt-8">© 2023 Lielson Tattoo Studio. Todos os direitos reservados.</p>
+                 </div>
+             </footer>
+
+             {/* Booking Modal */}
+             <Modal isOpen={showBooking} onClose={() => setShowBooking(false)} title={`Agendar ${selectedService === 'tattoo' ? 'Tatuagem' : 'Serviço'}`}>
+                <form onSubmit={submitBooking} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2">
+                            <label className="text-xs font-bold text-gray-500 uppercase">Seu Nome</label>
+                            <input required className="w-full border p-2 rounded bg-gray-50" value={bookingForm.name} onChange={e => setBookingForm({...bookingForm, name: e.target.value})} />
+                        </div>
+                        <div className="col-span-2">
+                            <label className="text-xs font-bold text-gray-500 uppercase">WhatsApp</label>
+                            <input required className="w-full border p-2 rounded bg-gray-50" placeholder="(00) 00000-0000" value={bookingForm.phone} onChange={e => setBookingForm({...bookingForm, phone: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase">Data</label>
+                            <input required type="date" className="w-full border p-2 rounded bg-gray-50" value={bookingForm.date} onChange={e => setBookingForm({...bookingForm, date: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase">Hora</label>
+                            <input required type="time" className="w-full border p-2 rounded bg-gray-50" value={bookingForm.time} onChange={e => setBookingForm({...bookingForm, time: e.target.value})} />
+                        </div>
+                    </div>
+                    
+                    {selectedService === 'tattoo' && (
+                        <div className="bg-gray-50 p-3 rounded border border-gray-200 space-y-3">
+                            <p className="font-bold text-sm text-gray-800">Detalhes da Tatuagem</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <input placeholder="Tamanho (ex: 15cm)" className="border p-2 rounded" value={bookingForm.tattooSize} onChange={e => setBookingForm({...bookingForm, tattooSize: e.target.value})} />
+                                <input placeholder="Local do corpo" className="border p-2 rounded" value={bookingForm.tattooLocation} onChange={e => setBookingForm({...bookingForm, tattooLocation: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Referência (Imagem)</label>
+                                <input type="file" className="text-sm" onChange={(e) => {
+                                    if(e.target.files?.[0]) {
+                                        const r = new FileReader();
+                                        r.onload = (ev) => setTattooRefImg(ev.target?.result as string);
+                                        r.readAsDataURL(e.target.files[0]);
+                                    }
+                                }} />
+                            </div>
+                            {tattooRefImg && <img src={tattooRefImg} className="h-32 object-contain bg-white border rounded" />}
+                        </div>
+                    )}
+                    
+                    <div>
+                         <label className="text-xs font-bold text-gray-500 uppercase">Observações</label>
+                         <textarea className="w-full border p-2 rounded bg-gray-50" rows={2} value={bookingForm.notes} onChange={e => setBookingForm({...bookingForm, notes: e.target.value})}></textarea>
+                    </div>
+
+                    <button className="w-full bg-theme-accent text-white font-bold py-3 rounded shadow-lg hover:opacity-90 transition">Confirmar Agendamento</button>
+                </form>
+             </Modal>
+
+             {/* Checkout Modal */}
+             <Modal isOpen={showCheckout} onClose={() => setShowCheckout(false)} title="Finalizar Pedido">
+                 {checkoutData && (
+                     <form onSubmit={submitOrder} className="space-y-4">
+                        <div className="bg-gray-50 p-3 rounded border text-sm flex justify-between font-bold text-gray-700">
+                            <span>Total a Pagar:</span>
+                            <span className="text-lg">R$ {(checkoutData.total + (orderForm.delivery ? 5 : 0)).toFixed(2)}</span>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 gap-3">
+                            <input required placeholder="Seu Nome Completo" className="border p-2 rounded" value={orderForm.name} onChange={e => setOrderForm({...orderForm, name: e.target.value})} />
+                            <input required placeholder="WhatsApp para contato" className="border p-2 rounded" value={orderForm.phone} onChange={e => setOrderForm({...orderForm, phone: e.target.value})} />
+                        </div>
+
+                        <div className="flex gap-4">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" checked={!orderForm.delivery} onChange={() => setOrderForm({...orderForm, delivery: false})} />
+                                <span className="text-sm font-bold text-gray-700">Retirar na Loja</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" checked={orderForm.delivery} onChange={() => setOrderForm({...orderForm, delivery: true})} />
+                                <span className="text-sm font-bold text-gray-700">Entrega (+ R$ 5,00)</span>
+                            </label>
+                        </div>
+
+                        {orderForm.delivery && (
+                            <div className="bg-blue-50 p-3 rounded border border-blue-100 space-y-2 animate-fadeIn">
+                                <h4 className="text-xs font-bold text-blue-800 uppercase">Endereço de Entrega</h4>
+                                <input required placeholder="Bairro" className="w-full border p-2 rounded text-sm" value={orderForm.address.neighborhood} onChange={e => setOrderForm({...orderForm, address: {...orderForm.address, neighborhood: e.target.value}})} />
+                                <div className="flex gap-2">
+                                    <input required placeholder="Rua" className="w-3/4 border p-2 rounded text-sm" value={orderForm.address.street} onChange={e => setOrderForm({...orderForm, address: {...orderForm.address, street: e.target.value}})} />
+                                    <input required placeholder="Nº" className="w-1/4 border p-2 rounded text-sm" value={orderForm.address.number} onChange={e => setOrderForm({...orderForm, address: {...orderForm.address, number: e.target.value}})} />
+                                </div>
+                                <input placeholder="Ponto de Referência" className="w-full border p-2 rounded text-sm" value={orderForm.address.reference} onChange={e => setOrderForm({...orderForm, address: {...orderForm.address, reference: e.target.value}})} />
                             </div>
                         )}
-                        <h1 className="text-xl md:text-2xl font-bold uppercase tracking-widest font-serif">Lielson Tattoo</h1>
-                    </div>
-                    <button onClick={() => setCartOpen(true)} className="relative p-2 hover:text-theme-accent transition">
-                        <i className="fas fa-shopping-cart text-xl"></i>
-                        {cart.length > 0 && <span className="absolute top-0 right-0 bg-theme-accent text-xs rounded-full w-5 h-5 flex items-center justify-center text-white font-bold">{cart.reduce((a,b) => a + b.quantity, 0)}</span>}
-                    </button>
-                </div>
-            </header>
-
-            {/* Hero */}
-            <div className="bg-gray-900 text-white py-16 md:py-24 text-center relative overflow-hidden">
-                <div className="absolute inset-0 opacity-40 bg-[url('https://images.unsplash.com/photo-1598371839696-5c5bb00bdc28?q=80&w=1920&auto=format&fit=crop')] bg-cover bg-center"></div>
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900"></div>
-                
-                <div className="relative z-10 container mx-auto px-4 flex flex-col items-center">
-                    {config.logoBase64 && (
-                        <img src={config.logoBase64} className="h-32 w-32 md:h-40 md:w-40 rounded-full object-cover border-4 border-theme-accent shadow-2xl mb-6 animate-slideIn"/>
-                    )}
-                    <h2 className="text-4xl md:text-5xl font-bold mb-4 font-serif tracking-wide text-white">Arte na Pele</h2>
-                    <p className="text-gray-300 text-lg md:text-xl max-w-2xl mx-auto">Transformando suas ideias em realidade com traços precisos e estilo único.</p>
-                    <a href="#agendamento" className="mt-8 inline-block bg-theme-accent text-white px-8 py-3 rounded-full font-bold hover:bg-red-700 transition transform hover:scale-105 shadow-lg uppercase tracking-wider">
-                        Agendar Agora
-                    </a>
-                </div>
-            </div>
-
-            <div className="container mx-auto p-4 space-y-12">
-                
-                {/* Scheduling Section - Professional Redesign */}
-                <section id="agendamento" className="relative z-10 -mt-8">
-                     <div className="bg-gray-800 bg-opacity-95 backdrop-blur-md rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
-                        <div className="p-6 md:p-8 bg-gradient-to-r from-gray-800 to-gray-900 border-b border-gray-700">
-                             <h3 className="text-3xl font-bold text-white flex items-center gap-3">
-                                <i className="fas fa-calendar-alt text-theme-accent"></i> 
-                                Agendamento
-                             </h3>
-                             <p className="text-gray-400 mt-2">Escolha seu serviço, data e horário. É rápido e fácil.</p>
+                        
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Forma de Pagamento</label>
+                            <select className="w-full border p-2 rounded" value={orderForm.method} onChange={e => setOrderForm({...orderForm, method: e.target.value as any})}>
+                                <option value="pix">PIX (Chave Celular/Email)</option>
+                                <option value="card">Cartão (Na entrega/retirada)</option>
+                                <option value="money">Dinheiro</option>
+                            </select>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-gray-700">
-                            {/* Left Column: Selection */}
-                            <div className="p-6 md:p-8 space-y-8">
-                                <div>
-                                    <label className="block text-sm font-bold text-theme-accent uppercase mb-3 tracking-wide">1. Escolha o Serviço</label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {SERVICE_OPTIONS.map(opt => (
-                                            <button 
-                                                key={opt.id}
-                                                onClick={() => setApptForm({...apptForm, service: opt.id})}
-                                                className={`p-4 rounded-xl border-2 transition-all duration-300 text-left relative overflow-hidden group ${apptForm.service === opt.id ? 'border-theme-accent bg-gray-700 shadow-lg scale-[1.02]' : 'border-gray-600 bg-gray-800 hover:border-gray-500'}`}
-                                            >
-                                                <div className={`text-2xl mb-2 transition-colors ${apptForm.service === opt.id ? 'text-theme-accent' : 'text-gray-500 group-hover:text-white'}`}>
-                                                    <i className={`fas ${opt.icon}`}></i>
-                                                </div>
-                                                <div className="font-bold text-sm text-white">{opt.label}</div>
-                                                <div className="text-xs text-gray-400 mt-1">
-                                                    {opt.price > 0 ? `R$ ${opt.price},00` : 'A combinar'}
-                                                </div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+                        {orderForm.method === 'money' && (
+                             <input placeholder="Troco para quanto?" className="w-full border p-2 rounded" value={orderForm.changeFor} onChange={e => setOrderForm({...orderForm, changeFor: e.target.value})} />
+                        )}
 
-                                <div>
-                                    <label className="block text-sm font-bold text-theme-accent uppercase mb-3 tracking-wide">2. Data e Hora</label>
-                                    <div className="bg-gray-700 p-2 rounded-lg border border-gray-600 mb-4 flex items-center gap-3">
-                                        <i className="fas fa-calendar-day text-gray-400 ml-2"></i>
-                                        <input 
-                                            type="date" 
-                                            min={new Date().toISOString().split('T')[0]} 
-                                            className="bg-transparent text-white w-full outline-none font-bold"
-                                            value={apptForm.date} 
-                                            onChange={e => setApptForm({...apptForm, date: e.target.value})} 
-                                        />
-                                    </div>
-                                    
-                                    {apptForm.date ? (
-                                        availableSlots.length > 0 ? (
-                                            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 animate-slideIn">
-                                                {availableSlots.map(time => (
-                                                    <button 
-                                                        key={time} 
-                                                        onClick={() => setApptForm({...apptForm, time})}
-                                                        className={`py-2 text-xs font-bold rounded-lg border transition ${apptForm.time === time ? 'bg-theme-accent text-white border-theme-accent shadow-md transform scale-105' : 'border-gray-600 hover:bg-gray-600 text-gray-300'}`}
-                                                    >
-                                                        {time}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="text-center p-4 bg-red-900 bg-opacity-20 rounded border border-red-800 text-red-400 text-sm">
-                                                <i className="fas fa-ban mr-2"></i> Sem horários para esta data.
-                                            </div>
-                                        )
-                                    ) : (
-                                        <p className="text-xs text-gray-500 italic">Selecione uma data acima para ver os horários.</p>
-                                    )}
-                                </div>
-                            </div>
+                        <button className="w-full bg-green-600 text-white font-bold py-3 rounded shadow hover:bg-green-700 transition">
+                            <i className="fab fa-whatsapp mr-2"></i> Enviar Pedido
+                        </button>
+                     </form>
+                 )}
+             </Modal>
 
-                            {/* Right Column: Details & Summary */}
-                            <div className="p-6 md:p-8 flex flex-col justify-between bg-gray-900 bg-opacity-50">
-                                <div className="space-y-6">
-                                    <div>
-                                        <label className="block text-sm font-bold text-theme-accent uppercase mb-3 tracking-wide">3. Seus Dados</label>
-                                        <div className="space-y-4">
-                                            <div className="relative">
-                                                <i className="fas fa-user absolute left-3 top-3.5 text-gray-500"></i>
-                                                <input type="text" placeholder="Nome Completo" className={`${inputClasses} pl-10`} value={apptForm.name} onChange={e => setApptForm({...apptForm, name: e.target.value})} />
-                                            </div>
-                                            <div className="relative">
-                                                <i className="fab fa-whatsapp absolute left-3 top-3.5 text-gray-500"></i>
-                                                <input type="tel" placeholder="WhatsApp (DDD) 9..." className={`${inputClasses} pl-10`} value={apptForm.phone} onChange={e => setApptForm({...apptForm, phone: e.target.value})} />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {apptForm.service === 'custom-tattoo' && (
-                                        <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 space-y-3 animate-slideIn">
-                                            <h4 className="font-bold text-sm text-white flex items-center gap-2"><i className="fas fa-pencil-alt text-theme-accent"></i> Detalhes da Tattoo</h4>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <input type="text" placeholder="Local (ex: Braço)" className={`${inputClasses} text-xs`} value={apptForm.tattooLocation} onChange={e => setApptForm({...apptForm, tattooLocation: e.target.value})} />
-                                                <input type="text" placeholder="Tamanho (cm)" className={`${inputClasses} text-xs`} value={apptForm.tattooSize} onChange={e => setApptForm({...apptForm, tattooSize: e.target.value})} />
-                                            </div>
-                                            <div className="relative group cursor-pointer">
-                                                <div className="border-2 border-dashed border-gray-600 rounded-lg p-3 text-center group-hover:border-theme-accent transition">
-                                                    <i className="fas fa-cloud-upload-alt text-2xl text-gray-500 mb-1"></i>
-                                                    <p className="text-[10px] text-gray-400">Clique para enviar referência</p>
-                                                </div>
-                                                <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => {
-                                                    if (e.target.files?.[0]) {
-                                                        const reader = new FileReader();
-                                                        reader.onload = (ev) => setTattooImg(ev.target?.result as string);
-                                                        reader.readAsDataURL(e.target.files[0]);
-                                                    }
-                                                }} />
-                                            </div>
-                                            {tattooImg && <p className="text-green-500 text-xs text-center"><i className="fas fa-check"></i> Imagem carregada</p>}
-                                        </div>
-                                    )}
-                                    
-                                    <textarea placeholder="Alguma observação especial?" className={`${inputClasses} h-20 text-sm`} value={apptForm.notes} onChange={e => setApptForm({...apptForm, notes: e.target.value})}></textarea>
-                                </div>
-
-                                <div className="mt-8 pt-6 border-t border-gray-700">
-                                    <div className="bg-gray-800 p-4 rounded-lg border-l-4 border-theme-accent mb-4">
-                                        <h4 className="font-bold text-gray-300 text-xs uppercase mb-2">Resumo do Agendamento</h4>
-                                        <div className="flex justify-between items-end">
-                                            <div className="text-sm text-white">
-                                                <p><span className="text-gray-500">Serviço:</span> {selectedService?.label}</p>
-                                                <p><span className="text-gray-500">Data:</span> {apptForm.date ? apptForm.date.split('-').reverse().join('/') : '--/--'}</p>
-                                                <p><span className="text-gray-500">Hora:</span> {apptForm.time || '--:--'}</p>
-                                            </div>
-                                            <div className="text-xl font-bold text-theme-accent">
-                                                {selectedService && selectedService.price > 0 ? `R$ ${selectedService.price}` : 'A Combinar'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button 
-                                        onClick={submitAppointment} 
-                                        disabled={!apptForm.date || !apptForm.time || !apptForm.name || !apptForm.phone}
-                                        className={`w-full py-4 rounded-lg font-bold text-lg uppercase tracking-wider shadow-lg transition transform ${
-                                            (!apptForm.date || !apptForm.time || !apptForm.name || !apptForm.phone) 
-                                            ? 'bg-gray-700 text-gray-500 cursor-not-allowed' 
-                                            : 'bg-gradient-to-r from-theme-accent to-orange-700 text-white hover:scale-[1.02] hover:shadow-xl'
-                                        }`}
-                                    >
-                                        Confirmar Agendamento
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                     </div>
-                </section>
-
-                {/* Shop Section */}
-                <section id="loja">
-                     <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-2xl font-bold text-theme-accent">Loja & Produtos</h3>
-                        <div className="text-sm space-x-2">
-                            <button onClick={() => setActiveCat('all')} className={`px-3 py-1 rounded transition ${activeCat === 'all' ? 'bg-theme-accent text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>Todos</button>
-                            {categories.map(c => (
-                                <button key={c.id} onClick={() => setActiveCat(c.id)} className={`px-3 py-1 rounded transition ${activeCat === c.id ? 'bg-theme-accent text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>{c.name}</button>
-                            ))}
-                        </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                        {products.filter(p => activeCat === 'all' || p.categoryId === activeCat).map(p => (
-                            <div key={p.id} className="bg-gray-800 text-white rounded-lg shadow-lg hover:shadow-xl transition overflow-hidden flex flex-col border border-gray-700">
-                                <div className="h-48 bg-gray-700 flex items-center justify-center">
-                                    {p.imageBase64 ? <img src={p.imageBase64} className="h-full w-full object-cover" alt={p.name}/> : <i className="fas fa-image text-4xl text-gray-500"></i>}
-                                </div>
-                                <div className="p-4 flex-1 flex flex-col">
-                                    <h4 className="font-bold text-lg mb-1">{p.name}</h4>
-                                    <p className="text-sm text-gray-400 mb-2 flex-1">{p.description}</p>
-                                    <div className="flex justify-between items-center mt-4">
-                                        <span className="font-bold text-theme-accent text-lg">R$ {p.price.toFixed(2)}</span>
-                                        <button 
-                                            onClick={() => handleAddToCart(p)}
-                                            disabled={p.stock <= 0}
-                                            className={`px-3 py-1 rounded text-white text-sm ${p.stock > 0 ? 'bg-theme-primary hover:bg-opacity-90 border border-gray-600' : 'bg-gray-600 cursor-not-allowed'}`}
-                                        >
-                                            {p.stock > 0 ? 'Adicionar' : 'Esgotado'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-                
-                {/* Contact Footer */}
-                <footer className="border-t border-gray-800 pt-8 pb-4 text-center text-gray-500">
-                    <p className="mb-2"><i className="fas fa-map-marker-alt"></i> Rua Exemplo, 123 - Centro</p>
-                    <p className="mb-4"><i className="fab fa-whatsapp"></i> (00) 90000-0000</p>
-                    <p className="text-xs mb-2">&copy; 2023 Lielson Tattoo Studio. Todos os direitos reservados.</p>
-                    <a href="#admin" className="text-[10px] text-gray-700 hover:text-gray-400 uppercase tracking-widest">Área Administrativa</a>
-                </footer>
-            </div>
-
-            {/* Carts & Modals */}
-            <CartSidebar 
-                isOpen={cartOpen} 
-                onClose={() => setCartOpen(false)} 
+             <CartSidebar 
+                isOpen={isCartOpen} 
+                onClose={() => setIsCartOpen(false)} 
                 cart={cart} 
                 setCart={setCart} 
-                onCheckout={(sub, disc, total, code) => {
-                    setOrderSummary({sub, disc, total, code: code || ''});
-                    setCheckoutOpen(true);
-                    setCartOpen(false);
+                onCheckout={(sub, disc, tot, coup) => {
+                    setCheckoutData({ subtotal: sub, discount: disc, total: tot, coupon: coup });
+                    setShowCheckout(true);
+                    setIsCartOpen(false);
                 }} 
             />
-
-            <Modal isOpen={checkoutOpen} onClose={() => setCheckoutOpen(false)} title="Finalizar Pedido">
-                <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <input className={inputClasses} placeholder="Nome Completo" value={checkoutData.clientName || ''} onChange={e => setCheckoutData({...checkoutData, clientName: e.target.value})} />
-                        <input className={inputClasses} placeholder="Telefone" value={checkoutData.phone || ''} onChange={e => setCheckoutData({...checkoutData, phone: e.target.value})} />
-                    </div>
-                    
-                    <div className="flex gap-4 text-white">
-                        <label className="flex items-center gap-2 cursor-pointer hover:text-theme-accent">
-                            <input type="radio" name="delivery" checked={!checkoutData.delivery} onChange={() => setCheckoutData({...checkoutData, delivery: false})} className="accent-theme-accent" /> 
-                            Retirar na Loja
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer hover:text-theme-accent">
-                            <input type="radio" name="delivery" checked={checkoutData.delivery} onChange={() => setCheckoutData({...checkoutData, delivery: true})} className="accent-theme-accent" /> 
-                            Entrega (+R$ 7,00)
-                        </label>
-                    </div>
-
-                    {checkoutData.delivery && (
-                        <div className="bg-gray-700 bg-opacity-50 p-3 rounded border border-gray-600 space-y-2">
-                            <input className={`${inputClasses} text-sm`} placeholder="Bairro" onChange={e => setCheckoutData({...checkoutData, address: {...checkoutData.address!, neighborhood: e.target.value}})} />
-                            <div className="grid grid-cols-3 gap-2">
-                                <input className={`col-span-2 ${inputClasses} text-sm`} placeholder="Rua" onChange={e => setCheckoutData({...checkoutData, address: {...checkoutData.address!, street: e.target.value}})} />
-                                <input className={`${inputClasses} text-sm`} placeholder="Nº" onChange={e => setCheckoutData({...checkoutData, address: {...checkoutData.address!, number: e.target.value}})} />
-                            </div>
-                            <input className={`${inputClasses} text-sm`} placeholder="Ponto de Referência" onChange={e => setCheckoutData({...checkoutData, address: {...checkoutData.address!, reference: e.target.value}})} />
-                        </div>
-                    )}
-
-                    <div>
-                        <label className="block text-sm font-medium mb-1 text-gray-300">Pagamento</label>
-                        <select className={inputClasses} value={checkoutData.paymentMethod} onChange={e => setCheckoutData({...checkoutData, paymentMethod: e.target.value as any})}>
-                            <option value="money" className="bg-gray-800">Dinheiro</option>
-                            <option value="card" className="bg-gray-800">Cartão</option>
-                            <option value="pix" className="bg-gray-800">PIX</option>
-                        </select>
-                    </div>
-
-                    {checkoutData.paymentMethod === 'money' && (
-                        <input className={inputClasses} type="number" placeholder="Troco para quanto?" onChange={e => setCheckoutData({...checkoutData, changeFor: parseFloat(e.target.value)})} />
-                    )}
-
-                    <div className="bg-gray-700 text-white p-4 rounded text-center border border-gray-600">
-                        <p className="text-sm opacity-80">Total a Pagar</p>
-                        <p className="text-2xl font-bold text-theme-accent">R$ {(orderSummary.total + (checkoutData.delivery ? 7 : 0)).toFixed(2)}</p>
-                    </div>
-
-                    <button onClick={submitOrder} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded transition shadow-lg">CONFIRMAR PEDIDO</button>
-                </div>
-            </Modal>
         </div>
     );
 };

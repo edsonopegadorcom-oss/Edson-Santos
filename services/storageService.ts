@@ -1,9 +1,9 @@
 import { 
-  Appointment, Product, Category, Order, Coupon, AdminConfig 
+  Appointment, Product, Category, Order, Coupon, AdminConfig, ServiceItem 
 } from '../types';
 import { db } from './firebase';
 import { 
-  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, 
+  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
   onSnapshot, query, orderBy, where, writeBatch 
 } from 'firebase/firestore';
 
@@ -14,7 +14,8 @@ const C = {
   PRODUCTS: 'products',
   CATEGORIES: 'categories',
   ORDERS: 'orders',
-  COUPONS: 'coupons'
+  COUPONS: 'coupons',
+  SERVICES: 'services'
 };
 
 // --- Helpers ---
@@ -61,6 +62,52 @@ export const StorageService = {
 
   saveConfig: async (config: AdminConfig) => {
     await setDoc(doc(db, C.CONFIG, 'main'), config);
+  },
+
+  // --- SERVICES (New) ---
+  getServices: async (): Promise<ServiceItem[]> => {
+    const snap = await getDocs(collection(db, C.SERVICES));
+    let list = snap.docs.map(d => ({ ...d.data(), id: d.id } as ServiceItem));
+    
+    if (list.length === 0) {
+        // Seed default services
+        const defaults: ServiceItem[] = [
+            { id: generateId(), name: 'Corte de Cabelo', price: 25, icon: 'cut', active: true },
+            { id: generateId(), name: 'Barba', price: 15, icon: 'user-tie', active: true },
+            { id: generateId(), name: 'Pé de Cabelo', price: 10, icon: 'shoe-prints', active: true },
+        ];
+        const batch = writeBatch(db);
+        defaults.forEach(s => {
+            const ref = doc(collection(db, C.SERVICES));
+            batch.set(ref, {...s, id: ref.id});
+        });
+        await batch.commit();
+        // Return defaults with new IDs (approximation, usually requires re-fetch)
+        list = defaults; 
+        // Force re-fetch to get correct IDs
+        const newSnap = await getDocs(collection(db, C.SERVICES));
+        list = newSnap.docs.map(d => ({ ...d.data(), id: d.id } as ServiceItem));
+    }
+    return list;
+  },
+
+  subscribeServices: (callback: (data: ServiceItem[]) => void) => {
+      return onSnapshot(collection(db, C.SERVICES), (snap) => {
+          callback(snap.docs.map(d => ({...d.data(), id: d.id} as ServiceItem)));
+      });
+  },
+
+  saveService: async (service: ServiceItem) => {
+      const { id, ...data } = service;
+      if (id) {
+          await setDoc(doc(db, C.SERVICES, id), data);
+      } else {
+          await addDoc(collection(db, C.SERVICES), data);
+      }
+  },
+
+  deleteService: async (id: string) => {
+      await deleteDoc(doc(db, C.SERVICES, id));
   },
 
   // --- APPOINTMENTS ---
@@ -126,11 +173,10 @@ export const StorageService = {
     const snap = await getDocs(collection(db, C.CATEGORIES));
     let list = snap.docs.map(d => ({ ...d.data(), id: d.id } as Category));
     if (list.length === 0) {
-        // Seed default
+        // Seed default requested categories
         const defaults = [
-            { id: 'c1', name: 'Piercing' },
-            { id: 'c2', name: 'Aftercare' },
-            { id: 'c3', name: 'Merch' }
+            { id: 'barbearia', name: 'Produto de Barbearia' },
+            { id: 'roupas', name: 'Produto da Loja de Roupas' }
         ];
         for(const c of defaults) await setDoc(doc(db, C.CATEGORIES, c.id), c);
         list = defaults;
