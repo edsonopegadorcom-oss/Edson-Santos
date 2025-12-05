@@ -9,19 +9,18 @@ import { StorageService, generateId, simpleHash } from './services/storageServic
 
 // --- Sub-components for specific pages ---
 
-// --- 1. ADMIN PANEL ---
+// --- 1. ADMIN PANEL (Re-designed) ---
 const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
-    const [tab, setTab] = useState<'appointments' | 'orders' | 'products' | 'config' | 'reports'>('appointments');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'appointments' | 'orders' | 'products' | 'config'>('dashboard');
     const [config, setConfig] = useState<AdminConfig | null>(null);
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
-    const [viewDetail, setViewDetail] = useState<any>(null); // For modals
+    const [viewDetail, setViewDetail] = useState<any>(null);
 
     // Realtime Subscriptions & Async Load
     useEffect(() => {
-        // Load Static/One-time data
         const loadStatic = async () => {
             const conf = await StorageService.getConfig();
             setConfig(conf);
@@ -30,7 +29,6 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         };
         loadStatic();
 
-        // Subscriptions
         const unsubAppt = StorageService.subscribeAppointments(setAppointments);
         const unsubOrders = StorageService.subscribeOrders(setOrders);
         const unsubProds = StorageService.subscribeProducts(setProducts);
@@ -44,16 +42,13 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
     const handleApptAction = async (id: string, status: AppointmentStatus) => {
         const appt = appointments.find(a => a.id === id);
-        if (appt) {
-            await StorageService.updateAppointment({ ...appt, status });
-        }
+        if (appt) await StorageService.updateAppointment({ ...appt, status });
     };
 
     const handleOrderAction = async (id: string, status: OrderStatus) => {
         const order = orders.find(o => o.id === id);
         if (order) {
             const updated = { ...order, status };
-            // If confirming, reduce stock if not already done (simplified logic)
             if (status === OrderStatus.CONFIRMED && order.status !== OrderStatus.CONFIRMED) {
                 await StorageService.updateStock(order.items.map(i => ({ id: i.id, qty: i.quantity })));
             }
@@ -94,7 +89,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         alert("Configurações salvas. Atualize a página para ver o novo tema.");
     };
     
-    // Reports Logic
+    // Stats Logic
     const getStats = () => {
         const now = new Date();
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -110,280 +105,472 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         return {
             daily: calcTotal(startOfDay),
             weekly: calcTotal(startOfWeek),
-            monthly: calcTotal(startOfMonth)
+            monthly: calcTotal(startOfMonth),
+            pendingAppts: appointments.filter(a => a.status === AppointmentStatus.PENDING).length,
+            pendingOrders: orders.filter(o => o.status === OrderStatus.PENDING).length
         };
     };
     
     const stats = getStats();
 
-    if (!config) return <div className="p-8 text-center">Carregando Painel...</div>;
+    if (!config) return <div className="h-screen flex items-center justify-center bg-gray-100 text-gray-500">Carregando Painel...</div>;
+
+    // --- Sidebar Component ---
+    const SidebarItem = ({ id, icon, label }: { id: typeof activeTab, icon: string, label: string }) => (
+        <button 
+            onClick={() => setActiveTab(id)}
+            className={`w-full flex items-center gap-3 px-4 py-3 transition-colors ${activeTab === id ? 'bg-theme-accent text-white shadow-lg' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+        >
+            <i className={`fas fa-${icon} w-6 text-center`}></i>
+            <span className="font-medium">{label}</span>
+        </button>
+    );
 
     return (
-        <div className="p-4 md:p-8 max-w-7xl mx-auto text-gray-800">
-            <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-                <h1 className="text-2xl font-bold">Painel Administrativo (Online)</h1>
-                <div className="flex items-center gap-4">
-                    <button onClick={onLogout} className="text-red-600 hover:text-red-800 underline">Sair</button>
-                </div>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex flex-wrap gap-2 mb-6 border-b">
-                {(['appointments', 'orders', 'products', 'config', 'reports'] as const).map(t => (
-                    <button 
-                        key={t}
-                        onClick={() => setTab(t)}
-                        className={`px-4 py-2 capitalize ${tab === t ? 'border-b-2 border-blue-600 font-bold text-blue-600' : 'text-gray-500'}`}
-                    >
-                        {t === 'appointments' ? 'Agendamentos' : t === 'orders' ? 'Pedidos' : t === 'products' ? 'Produtos' : t === 'config' ? 'Config' : 'Relatórios'}
-                    </button>
-                ))}
-            </div>
-
-            {/* Tab Content */}
-            <div className="bg-white rounded shadow p-4 min-h-[400px]">
-                {tab === 'appointments' && (
-                    <div className="overflow-x-auto">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-bold text-lg">Lista de Agendamentos ({appointments.length})</h3>
+        <div className="flex h-screen bg-gray-100 overflow-hidden font-sans">
+            {/* Sidebar */}
+            <aside className="w-64 bg-gray-900 text-white flex flex-col shadow-2xl z-20 hidden md:flex">
+                <div className="p-6 border-b border-gray-800 flex flex-col items-center">
+                    {config.logoBase64 ? (
+                        <img src={config.logoBase64} className="h-16 w-16 rounded-full object-cover border-2 border-theme-accent mb-3"/>
+                    ) : (
+                        <div className="h-16 w-16 bg-gray-800 rounded-full flex items-center justify-center border-2 border-gray-700 mb-3 text-2xl">
+                           <i className="fas fa-user-shield"></i>
                         </div>
-                        {appointments.length === 0 ? (
-                            <p className="text-gray-500 text-center py-8">Nenhum agendamento encontrado.</p>
-                        ) : (
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-gray-100">
+                    )}
+                    <h2 className="text-lg font-bold tracking-wide">Painel Admin</h2>
+                    <p className="text-xs text-gray-500">Lielson Tattoo Studio</p>
+                </div>
+                
+                <nav className="flex-1 py-6 space-y-1">
+                    <SidebarItem id="dashboard" icon="chart-line" label="Visão Geral" />
+                    <SidebarItem id="appointments" icon="calendar-check" label="Agendamentos" />
+                    <SidebarItem id="orders" icon="shopping-bag" label="Pedidos" />
+                    <SidebarItem id="products" icon="box-open" label="Produtos" />
+                    <SidebarItem id="config" icon="cog" label="Configurações" />
+                </nav>
+
+                <div className="p-4 border-t border-gray-800">
+                    <button onClick={onLogout} className="w-full flex items-center justify-center gap-2 text-red-400 hover:text-red-300 transition py-2 text-sm uppercase font-bold tracking-wider">
+                        <i className="fas fa-sign-out-alt"></i> Sair
+                    </button>
+                </div>
+            </aside>
+
+            {/* Mobile Header (Only visible on small screens) */}
+            {/* For simplicity in this demo, we assume desktop admin usage or stacked layout on mobile would require more responsive css work, keeping it simple */}
+            
+            {/* Main Content */}
+            <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
+                {/* Top Header */}
+                <header className="bg-white shadow-sm h-16 flex items-center justify-between px-8 z-10">
+                    <h2 className="text-xl font-bold text-gray-700 capitalize">
+                        {activeTab === 'dashboard' ? 'Visão Geral' : activeTab}
+                    </h2>
+                    <div className="flex items-center gap-4">
+                        <div className="text-right">
+                            <p className="text-sm font-bold text-gray-700">Administrador</p>
+                            <p className="text-xs text-green-500 flex items-center justify-end gap-1">
+                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Online
+                            </p>
+                        </div>
+                    </div>
+                </header>
+
+                {/* Content Scroll Area */}
+                <div className="flex-1 overflow-y-auto p-8">
+                    
+                    {activeTab === 'dashboard' && (
+                        <div className="space-y-8">
+                            {/* Key Metrics */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xl"><i className="fas fa-calendar-alt"></i></div>
+                                    <div>
+                                        <p className="text-sm text-gray-500">Agendamentos Pendentes</p>
+                                        <p className="text-2xl font-bold text-gray-800">{stats.pendingAppts}</p>
+                                    </div>
+                                </div>
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xl"><i className="fas fa-shopping-cart"></i></div>
+                                    <div>
+                                        <p className="text-sm text-gray-500">Pedidos Pendentes</p>
+                                        <p className="text-2xl font-bold text-gray-800">{stats.pendingOrders}</p>
+                                    </div>
+                                </div>
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-xl"><i className="fas fa-dollar-sign"></i></div>
+                                    <div>
+                                        <p className="text-sm text-gray-500">Vendas Hoje</p>
+                                        <p className="text-2xl font-bold text-gray-800">R$ {stats.daily.toFixed(2)}</p>
+                                    </div>
+                                </div>
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center text-xl"><i className="fas fa-chart-line"></i></div>
+                                    <div>
+                                        <p className="text-sm text-gray-500">Vendas Mês</p>
+                                        <p className="text-2xl font-bold text-gray-800">R$ {stats.monthly.toFixed(2)}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                    <h3 className="font-bold text-gray-700 mb-4 border-b pb-2">Últimos Agendamentos</h3>
+                                    {appointments.slice(0,5).map(a => (
+                                        <div key={a.id} className="flex justify-between items-center py-3 border-b last:border-0 hover:bg-gray-50 px-2 transition">
+                                            <div>
+                                                <p className="font-bold text-sm text-gray-800">{a.name}</p>
+                                                <p className="text-xs text-gray-500">{a.serviceName}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-bold">{a.date.split('-').reverse().join('/')} - {a.time}</p>
+                                                <span className={`text-[10px] px-2 py-0.5 rounded text-white ${a.status === 'CONFIRMADO' ? 'bg-green-500' : 'bg-yellow-500'}`}>{a.status}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                    <h3 className="font-bold text-gray-700 mb-4 border-b pb-2">Últimos Pedidos</h3>
+                                    {orders.slice(0,5).map(o => (
+                                        <div key={o.id} className="flex justify-between items-center py-3 border-b last:border-0 hover:bg-gray-50 px-2 transition">
+                                            <div>
+                                                <p className="font-bold text-sm text-gray-800">{o.clientName}</p>
+                                                <p className="text-xs text-gray-500">{o.delivery ? 'Entrega' : 'Retirada'} - {o.items.length} itens</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-bold text-theme-accent">R$ {o.total.toFixed(2)}</p>
+                                                <span className={`text-[10px] px-2 py-0.5 rounded text-white ${o.status === 'PENDENTE' ? 'bg-yellow-500' : 'bg-green-500'}`}>{o.status}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'appointments' && (
+                         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                            <table className="w-full text-left border-collapse">
+                                <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider font-semibold border-b">
                                     <tr>
-                                        <th className="p-3">Data/Hora</th>
-                                        <th className="p-3">Cliente</th>
-                                        <th className="p-3">Serviço</th>
-                                        <th className="p-3">Status</th>
-                                        <th className="p-3">Ações</th>
+                                        <th className="p-4">Data/Hora</th>
+                                        <th className="p-4">Cliente</th>
+                                        <th className="p-4">Serviço</th>
+                                        <th className="p-4">Status</th>
+                                        <th className="p-4 text-right">Ações</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
                                     {appointments.map(a => (
-                                        <tr key={a.id} className="border-b hover:bg-gray-50">
-                                            <td className="p-3">
-                                                {a.date.split('-').reverse().join('/')} <br/>
-                                                <span className="font-bold">{a.time}</span>
+                                        <tr key={a.id} className="hover:bg-blue-50 transition-colors">
+                                            <td className="p-4">
+                                                <div className="font-bold text-gray-900">{a.date.split('-').reverse().join('/')}</div>
+                                                <div className="text-gray-500">{a.time}</div>
                                             </td>
-                                            <td className="p-3">
-                                                {a.name}<br/>
-                                                <a href={`https://wa.me/55${a.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="text-green-600 text-xs hover:underline">
+                                            <td className="p-4">
+                                                <div className="font-medium">{a.name}</div>
+                                                <a href={`https://wa.me/55${a.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="text-green-600 text-xs hover:underline flex items-center gap-1 mt-1">
                                                     <i className="fab fa-whatsapp"></i> {a.phone}
                                                 </a>
                                             </td>
-                                            <td className="p-3">{a.serviceName}</td>
-                                            <td className="p-3">
-                                                <span className={`px-2 py-1 rounded text-xs text-white ${a.status === 'CONFIRMADO' ? 'bg-green-500' : a.status === 'CANCELADO' ? 'bg-red-500' : 'bg-yellow-500'}`}>
+                                            <td className="p-4">{a.serviceName}</td>
+                                            <td className="p-4">
+                                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                                    a.status === 'CONFIRMADO' ? 'bg-green-100 text-green-700' : 
+                                                    a.status === 'CANCELADO' ? 'bg-red-100 text-red-700' : 
+                                                    'bg-yellow-100 text-yellow-700'
+                                                }`}>
                                                     {a.status}
                                                 </span>
                                             </td>
-                                            <td className="p-3 flex gap-2">
+                                            <td className="p-4 text-right space-x-2">
                                                 {a.status === 'PENDENTE' && (
-                                                    <button onClick={() => handleApptAction(a.id, AppointmentStatus.CONFIRMED)} className="text-green-600 hover:bg-green-100 p-1 rounded" title="Confirmar"><i className="fas fa-check"></i></button>
+                                                    <button onClick={() => handleApptAction(a.id, AppointmentStatus.CONFIRMED)} className="text-white bg-green-500 hover:bg-green-600 w-8 h-8 rounded-full shadow transition" title="Confirmar"><i className="fas fa-check"></i></button>
                                                 )}
                                                 {a.status !== 'CANCELADO' && (
-                                                    <button onClick={() => handleApptAction(a.id, AppointmentStatus.CANCELLED)} className="text-red-600 hover:bg-red-100 p-1 rounded" title="Cancelar"><i className="fas fa-times"></i></button>
+                                                    <button onClick={() => handleApptAction(a.id, AppointmentStatus.CANCELLED)} className="text-white bg-red-400 hover:bg-red-500 w-8 h-8 rounded-full shadow transition" title="Cancelar"><i className="fas fa-times"></i></button>
                                                 )}
-                                                <button onClick={() => setViewDetail(a)} className="text-blue-600 hover:bg-blue-100 p-1 rounded" title="Ver Detalhes"><i className="fas fa-eye"></i></button>
+                                                <button onClick={() => setViewDetail(a)} className="text-gray-600 bg-gray-200 hover:bg-gray-300 w-8 h-8 rounded-full shadow transition" title="Ver Detalhes"><i className="fas fa-eye"></i></button>
                                             </td>
                                         </tr>
                                     ))}
+                                    {appointments.length === 0 && (
+                                        <tr><td colSpan={5} className="p-8 text-center text-gray-400">Nenhum agendamento encontrado.</td></tr>
+                                    )}
                                 </tbody>
                             </table>
-                        )}
-                    </div>
-                )}
+                        </div>
+                    )}
 
-                {tab === 'orders' && (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                             <thead className="bg-gray-100">
+                    {activeTab === 'orders' && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider font-semibold border-b">
                                 <tr>
-                                    <th className="p-3">Data</th>
-                                    <th className="p-3">Cliente</th>
-                                    <th className="p-3">Total</th>
-                                    <th className="p-3">Tipo</th>
-                                    <th className="p-3">Status</th>
-                                    <th className="p-3">Ações</th>
+                                    <th className="p-4">#ID / Data</th>
+                                    <th className="p-4">Cliente</th>
+                                    <th className="p-4">Tipo</th>
+                                    <th className="p-4">Total</th>
+                                    <th className="p-4">Status</th>
+                                    <th className="p-4 text-right">Ações</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
                                 {orders.map(o => (
-                                    <tr key={o.id} className="border-b hover:bg-gray-50">
-                                        <td className="p-3">{new Date(o.createdAt).toLocaleDateString()}</td>
-                                        <td className="p-3">{o.clientName}</td>
-                                        <td className="p-3">R$ {o.total.toFixed(2)}</td>
-                                        <td className="p-3">{o.delivery ? 'Entrega' : 'Retirada'}</td>
-                                        <td className="p-3">
-                                            <span className={`px-2 py-1 rounded text-xs text-white ${o.status === 'ENTREGUE' ? 'bg-gray-800' : o.status === 'CONFIRMADO' ? 'bg-green-500' : o.status === 'CANCELADO' ? 'bg-red-500' : 'bg-yellow-500'}`}>
-                                                {o.status}
+                                    <tr key={o.id} className="hover:bg-blue-50 transition-colors">
+                                        <td className="p-4">
+                                            <div className="font-mono text-xs text-gray-400">...{o.id.slice(-6)}</div>
+                                            <div className="font-medium">{new Date(o.createdAt).toLocaleDateString()}</div>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="font-bold text-gray-900">{o.clientName}</div>
+                                            <div className="text-xs text-gray-500">{o.phone}</div>
+                                        </td>
+                                        <td className="p-4">
+                                            {o.delivery ? (
+                                                <span className="flex items-center gap-1 text-blue-600"><i className="fas fa-motorcycle"></i> Entrega</span>
+                                            ) : (
+                                                <span className="flex items-center gap-1 text-gray-600"><i className="fas fa-store"></i> Retirada</span>
+                                            )}
+                                        </td>
+                                        <td className="p-4 font-bold text-gray-800">R$ {o.total.toFixed(2)}</td>
+                                        <td className="p-4">
+                                             <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                                    o.status === 'ENTREGUE' ? 'bg-gray-800 text-white' : 
+                                                    o.status === 'CONFIRMADO' ? 'bg-green-100 text-green-700' : 
+                                                    o.status === 'CANCELADO' ? 'bg-red-100 text-red-700' : 
+                                                    'bg-yellow-100 text-yellow-700'
+                                                }`}>
+                                                    {o.status}
                                             </span>
                                         </td>
-                                        <td className="p-3 flex gap-2">
-                                            {o.status === 'PENDENTE' && <button onClick={() => handleOrderAction(o.id, OrderStatus.CONFIRMED)} className="text-green-600"><i className="fas fa-check-double"></i></button>}
-                                            {o.status === 'CONFIRMADO' && o.delivery && <button onClick={() => handleOrderAction(o.id, OrderStatus.DELIVERED)} className="text-gray-800"><i className="fas fa-truck"></i></button>}
-                                            <button onClick={() => setViewDetail(o)} className="text-blue-600"><i className="fas fa-eye"></i></button>
+                                        <td className="p-4 text-right space-x-2">
+                                            {o.status === 'PENDENTE' && <button onClick={() => handleOrderAction(o.id, OrderStatus.CONFIRMED)} className="text-white bg-green-500 hover:bg-green-600 w-8 h-8 rounded-full shadow transition"><i className="fas fa-check"></i></button>}
+                                            {o.status === 'CONFIRMADO' && o.delivery && <button onClick={() => handleOrderAction(o.id, OrderStatus.DELIVERED)} className="text-white bg-gray-700 hover:bg-gray-800 w-8 h-8 rounded-full shadow transition"><i className="fas fa-truck"></i></button>}
+                                            <button onClick={() => setViewDetail(o)} className="text-gray-600 bg-gray-200 hover:bg-gray-300 w-8 h-8 rounded-full shadow transition"><i className="fas fa-eye"></i></button>
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
-                )}
+                    )}
 
-                {tab === 'products' && (
-                    <div>
-                        <div className="mb-6 bg-gray-50 p-4 rounded border">
-                            <h3 className="font-bold mb-2">Novo Produto</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <input className="border p-2 rounded" placeholder="Nome" value={newProd.name || ''} onChange={e => setNewProd({...newProd, name: e.target.value})} />
-                                <input className="border p-2 rounded" type="number" placeholder="Preço" value={newProd.price || ''} onChange={e => setNewProd({...newProd, price: parseFloat(e.target.value)})} />
-                                <input className="border p-2 rounded" type="number" placeholder="Estoque" value={newProd.stock || ''} onChange={e => setNewProd({...newProd, stock: parseInt(e.target.value)})} />
-                                <select className="border p-2 rounded" value={newProd.categoryId} onChange={e => setNewProd({...newProd, categoryId: e.target.value})}>
-                                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                </select>
-                                <div className="col-span-2">
-                                    <label className="block text-xs mb-1">Imagem</label>
-                                    <input type="file" onChange={async (e) => {
-                                        if(e.target.files && e.target.files[0]) {
-                                            const reader = new FileReader();
-                                            reader.onload = (ev) => setProdImg(ev.target?.result as string);
-                                            reader.readAsDataURL(e.target.files[0]);
-                                        }
-                                    }} />
+                    {activeTab === 'products' && (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                             <div className="lg:col-span-1">
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 sticky top-4">
+                                    <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><i className="fas fa-plus-circle text-theme-accent"></i> Adicionar Produto</h3>
+                                    <div className="space-y-4">
+                                        <input className="w-full border bg-gray-50 p-2 rounded focus:ring-2 focus:ring-theme-accent outline-none" placeholder="Nome do Produto" value={newProd.name || ''} onChange={e => setNewProd({...newProd, name: e.target.value})} />
+                                        <div className="flex gap-2">
+                                            <input className="w-full border bg-gray-50 p-2 rounded focus:ring-2 focus:ring-theme-accent outline-none" type="number" placeholder="Preço" value={newProd.price || ''} onChange={e => setNewProd({...newProd, price: parseFloat(e.target.value)})} />
+                                            <input className="w-full border bg-gray-50 p-2 rounded focus:ring-2 focus:ring-theme-accent outline-none" type="number" placeholder="Qtd" value={newProd.stock || ''} onChange={e => setNewProd({...newProd, stock: parseInt(e.target.value)})} />
+                                        </div>
+                                        <select className="w-full border bg-gray-50 p-2 rounded focus:ring-2 focus:ring-theme-accent outline-none" value={newProd.categoryId} onChange={e => setNewProd({...newProd, categoryId: e.target.value})}>
+                                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </select>
+                                        <div className="border-2 border-dashed border-gray-300 rounded p-4 text-center cursor-pointer hover:bg-gray-50 relative">
+                                            <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={async (e) => {
+                                                if(e.target.files && e.target.files[0]) {
+                                                    const reader = new FileReader();
+                                                    reader.onload = (ev) => setProdImg(ev.target?.result as string);
+                                                    reader.readAsDataURL(e.target.files[0]);
+                                                }
+                                            }} />
+                                            {prodImg ? (
+                                                <img src={prodImg} className="h-20 mx-auto object-contain" />
+                                            ) : (
+                                                <span className="text-xs text-gray-500">Clique para carregar imagem</span>
+                                            )}
+                                        </div>
+                                        <button onClick={saveProduct} className="w-full bg-theme-accent text-white font-bold py-2 rounded hover:shadow-lg transition">Salvar Produto</button>
+                                    </div>
                                 </div>
-                            </div>
-                            <button onClick={saveProduct} className="mt-2 bg-green-600 text-white px-4 py-2 rounded">Salvar Produto</button>
-                        </div>
-                        <h3 className="font-bold mb-2">Estoque Atual</h3>
-                        <ul className="divide-y">
-                            {products.map(p => (
-                                <li key={p.id} className="py-2 flex justify-between">
-                                    <span>{p.name}</span>
-                                    <span className="font-mono text-sm">Qtd: {p.stock} | R$ {p.price}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
+                             </div>
 
-                {tab === 'config' && config && (
-                   <div className="space-y-4 max-w-md">
-                       <h3 className="font-bold">Aparência & Logo</h3>
-                       <div>
-                           <label className="block text-sm">Cor Primária (Fundo/Texto)</label>
-                           <input type="color" value={config.primaryColor} onChange={e => setConfig({...config, primaryColor: e.target.value})} className="h-10 w-full cursor-pointer"/>
-                       </div>
-                       <div>
-                           <label className="block text-sm">Cor Secundária (Destaques)</label>
-                           <input type="color" value={config.accentColor} onChange={e => setConfig({...config, accentColor: e.target.value})} className="h-10 w-full cursor-pointer"/>
-                       </div>
-                       <div>
-                           <label className="block text-sm">Logo do Estúdio</label>
-                           <div className="flex items-center gap-4 mt-2">
-                               {config.logoBase64 ? <img src={config.logoBase64} className="h-16 w-16 object-cover rounded border"/> : <div className="h-16 w-16 bg-gray-200 rounded flex items-center justify-center text-xs">Sem Logo</div>}
-                               <input type="file" onChange={(e) => {
-                                   if(e.target.files?.[0]) {
-                                       const reader = new FileReader();
-                                       reader.onload = (ev) => setNewLogo(ev.target?.result as string);
-                                       reader.readAsDataURL(e.target.files[0]);
-                                   }
-                               }} />
-                           </div>
-                       </div>
-                       
-                       <h3 className="font-bold pt-4">Dias Fechados</h3>
-                       <p className="text-xs text-gray-500">Selecione datas para bloquear agendamentos.</p>
-                       <input 
-                            type="date" 
-                            onChange={(e) => {
-                                if(e.target.value) {
-                                    const dates = config.closedDates.includes(e.target.value) 
-                                        ? config.closedDates.filter(d => d !== e.target.value)
-                                        : [...config.closedDates, e.target.value];
-                                    setConfig({...config, closedDates: dates});
-                                }
-                            }}
-                       />
-                       <div className="flex flex-wrap gap-2 mt-2">
-                           {config.closedDates.map(d => (
-                               <span key={d} className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded">
-                                   {d} <button onClick={() => setConfig({...config, closedDates: config.closedDates.filter(x => x !== d)})} className="ml-1 font-bold">x</button>
-                               </span>
-                           ))}
-                       </div>
+                             <div className="lg:col-span-2 space-y-4">
+                                 {products.map(p => (
+                                     <div key={p.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4">
+                                         <div className="h-16 w-16 bg-gray-100 rounded flex-shrink-0">
+                                             {p.imageBase64 && <img src={p.imageBase64} className="h-full w-full object-cover rounded"/>}
+                                         </div>
+                                         <div className="flex-1">
+                                             <h4 className="font-bold text-gray-800">{p.name}</h4>
+                                             <p className="text-xs text-gray-500">{categories.find(c => c.id === p.categoryId)?.name}</p>
+                                         </div>
+                                         <div className="text-right">
+                                             <p className="font-bold text-gray-800">R$ {p.price.toFixed(2)}</p>
+                                             <p className={`text-xs font-bold ${p.stock > 0 ? 'text-green-600' : 'text-red-500'}`}>{p.stock} em estoque</p>
+                                         </div>
+                                     </div>
+                                 ))}
+                             </div>
+                        </div>
+                    )}
 
-                       <button onClick={saveConfig} className="bg-blue-600 text-white px-4 py-2 rounded w-full">Salvar Configurações</button>
-                   </div> 
-                )}
+                    {activeTab === 'config' && config && (
+                        <div className="max-w-2xl bg-white p-8 rounded-xl shadow-sm border border-gray-200">
+                             <h3 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Configurações Gerais</h3>
+                             
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                                 <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">Logo & Identidade</label>
+                                    <div className="flex items-center gap-4">
+                                        {config.logoBase64 ? <img src={config.logoBase64} className="h-24 w-24 object-cover rounded-full border-4 border-gray-100 shadow-sm"/> : <div className="h-24 w-24 bg-gray-100 rounded-full flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-300">Sem Logo</div>}
+                                        <label className="bg-gray-800 text-white text-xs px-3 py-2 rounded cursor-pointer hover:bg-gray-700 transition">
+                                            Alterar Logo
+                                            <input type="file" className="hidden" onChange={(e) => {
+                                                if(e.target.files?.[0]) {
+                                                    const reader = new FileReader();
+                                                    reader.onload = (ev) => setNewLogo(ev.target?.result as string);
+                                                    reader.readAsDataURL(e.target.files[0]);
+                                                }
+                                            }} />
+                                        </label>
+                                    </div>
+                                 </div>
+                                 <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm text-gray-600 mb-1">Cor Primária</label>
+                                        <div className="flex items-center gap-2">
+                                            <input type="color" value={config.primaryColor} onChange={e => setConfig({...config, primaryColor: e.target.value})} className="h-8 w-12 cursor-pointer border rounded"/>
+                                            <span className="text-xs font-mono">{config.primaryColor}</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm text-gray-600 mb-1">Cor Secundária (Destaques)</label>
+                                        <div className="flex items-center gap-2">
+                                            <input type="color" value={config.accentColor} onChange={e => setConfig({...config, accentColor: e.target.value})} className="h-8 w-12 cursor-pointer border rounded"/>
+                                            <span className="text-xs font-mono">{config.accentColor}</span>
+                                        </div>
+                                    </div>
+                                 </div>
+                             </div>
 
-                {tab === 'reports' && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-                        <div className="bg-blue-50 p-6 rounded border border-blue-200">
-                            <h4 className="text-gray-500 font-bold uppercase text-xs">Hoje</h4>
-                            <p className="text-3xl font-bold text-blue-700">R$ {stats.daily.toFixed(2)}</p>
+                             <div>
+                                <h4 className="font-bold text-gray-700 mb-2">Bloqueio de Agenda</h4>
+                                <p className="text-sm text-gray-500 mb-3">Selecione dias em que o estúdio não abrirá.</p>
+                                <div className="flex gap-4 items-end mb-4">
+                                    <input 
+                                            type="date" 
+                                            className="border p-2 rounded text-sm"
+                                            onChange={(e) => {
+                                                if(e.target.value) {
+                                                    const dates = config.closedDates.includes(e.target.value) 
+                                                        ? config.closedDates.filter(d => d !== e.target.value)
+                                                        : [...config.closedDates, e.target.value];
+                                                    setConfig({...config, closedDates: dates});
+                                                }
+                                            }}
+                                    />
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {config.closedDates.map(d => (
+                                        <span key={d} className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-1 rounded-full flex items-center gap-2">
+                                            {d.split('-').reverse().join('/')} 
+                                            <button onClick={() => setConfig({...config, closedDates: config.closedDates.filter(x => x !== d)})} className="hover:text-red-900 font-bold">×</button>
+                                        </span>
+                                    ))}
+                                </div>
+                             </div>
+
+                             <div className="mt-8 pt-6 border-t border-gray-100 text-right">
+                                <button onClick={saveConfig} className="bg-theme-accent text-white px-6 py-2 rounded shadow hover:opacity-90 transition font-bold">Salvar Alterações</button>
+                             </div>
                         </div>
-                        <div className="bg-green-50 p-6 rounded border border-green-200">
-                            <h4 className="text-gray-500 font-bold uppercase text-xs">Semana</h4>
-                            <p className="text-3xl font-bold text-green-700">R$ {stats.weekly.toFixed(2)}</p>
-                        </div>
-                        <div className="bg-purple-50 p-6 rounded border border-purple-200">
-                            <h4 className="text-gray-500 font-bold uppercase text-xs">Mês</h4>
-                            <p className="text-3xl font-bold text-purple-700">R$ {stats.monthly.toFixed(2)}</p>
-                        </div>
-                        <div className="col-span-1 md:col-span-3 mt-4 text-left">
-                            <p className="text-sm text-gray-500 italic">* Valores baseados em pedidos com status CONFIRMADO ou ENTREGUE.</p>
-                        </div>
-                    </div>
-                )}
-            </div>
+                    )}
+                </div>
+            </main>
 
             {/* Detail Modal */}
             <Modal isOpen={!!viewDetail} onClose={() => setViewDetail(null)} title="Detalhes">
                 {viewDetail && 'serviceName' in viewDetail ? (
                     // Appointment Details
-                    <div className="space-y-2 text-white">
-                        <p><strong>Cliente:</strong> {viewDetail.name}</p>
-                        <p><strong>Serviço:</strong> {viewDetail.serviceName}</p>
-                        <p><strong>Data:</strong> {viewDetail.date} às {viewDetail.time}</p>
-                        <p><strong>Status Atual:</strong> {viewDetail.status}</p>
+                    <div className="space-y-4 text-white">
+                        <div className="flex justify-between border-b border-gray-700 pb-2">
+                            <span className="text-gray-400">Status</span>
+                            <span className="font-bold">{viewDetail.status}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                             <div>
+                                 <p className="text-gray-400 text-xs">Cliente</p>
+                                 <p className="font-bold">{viewDetail.name}</p>
+                             </div>
+                             <div>
+                                 <p className="text-gray-400 text-xs">Contato</p>
+                                 <p>{viewDetail.phone}</p>
+                             </div>
+                             <div>
+                                 <p className="text-gray-400 text-xs">Data</p>
+                                 <p>{viewDetail.date}</p>
+                             </div>
+                             <div>
+                                 <p className="text-gray-400 text-xs">Hora</p>
+                                 <p>{viewDetail.time}</p>
+                             </div>
+                        </div>
+                        
+                        <div className="bg-gray-700 p-3 rounded">
+                            <p className="text-theme-accent font-bold text-sm mb-1">Serviço: {viewDetail.serviceName}</p>
+                            <p className="text-sm italic text-gray-300">"{viewDetail.notes || 'Sem observações'}"</p>
+                        </div>
+
                         {viewDetail.tattooBase64 && (
-                            <div className="my-2">
-                                <p className="font-bold text-sm">Referência Tattoo:</p>
-                                <img src={viewDetail.tattooBase64} alt="Ref" className="w-full max-h-48 object-contain bg-gray-700 rounded" />
-                                <p className="text-sm">Local: {viewDetail.tattooLocation} | Tam: {viewDetail.tattooSize}</p>
+                            <div className="mt-2 border border-gray-700 rounded p-2">
+                                <p className="font-bold text-xs mb-2 text-gray-400">REFERÊNCIA VISUAL:</p>
+                                <img src={viewDetail.tattooBase64} alt="Ref" className="w-full h-48 object-contain bg-black rounded" />
+                                <div className="flex justify-between text-xs mt-2 text-gray-400">
+                                    <span>Local: {viewDetail.tattooLocation}</span>
+                                    <span>Tam: {viewDetail.tattooSize}</span>
+                                </div>
                             </div>
                         )}
-                        <p className="bg-gray-700 p-2 rounded text-sm italic">{viewDetail.notes || 'Sem observações'}</p>
                     </div>
                 ) : viewDetail ? (
                     // Order Details
-                    <div className="space-y-2 text-white">
-                        <p><strong>Cliente:</strong> {viewDetail.clientName}</p>
-                        <p><strong>Tipo:</strong> {viewDetail.delivery ? 'Entrega' : 'Retirada na Loja'}</p>
+                    <div className="space-y-4 text-white">
+                        <div className="flex justify-between items-center border-b border-gray-700 pb-2">
+                            <span className="text-gray-400">Pedido #{viewDetail.id.slice(0,6)}</span>
+                            <span className="bg-theme-accent text-xs px-2 py-1 rounded">{viewDetail.status}</span>
+                        </div>
+                        
+                        <div className="bg-gray-900 p-3 rounded border border-gray-700">
+                            <h4 className="font-bold text-sm text-gray-300 mb-2">Cliente</h4>
+                            <p className="text-lg">{viewDetail.clientName}</p>
+                            <p className="text-sm text-gray-400">{viewDetail.phone}</p>
+                        </div>
+
                         {viewDetail.delivery && viewDetail.address && (
-                            <div className="bg-yellow-900 bg-opacity-30 p-2 rounded text-sm border border-yellow-700 text-yellow-100">
-                                <p>{viewDetail.address.street}, {viewDetail.address.number}</p>
-                                <p>{viewDetail.address.neighborhood}</p>
-                                <p className="text-xs text-yellow-300">Ref: {viewDetail.address.reference}</p>
+                            <div className="bg-gray-900 p-3 rounded border border-gray-700">
+                                <h4 className="font-bold text-sm text-gray-300 mb-2">Endereço de Entrega</h4>
+                                <p className="text-sm">{viewDetail.address.street}, {viewDetail.address.number}</p>
+                                <p className="text-sm">{viewDetail.address.neighborhood}</p>
+                                <p className="text-xs text-yellow-500 mt-1">Obs: {viewDetail.address.reference}</p>
                             </div>
                         )}
-                        <div className="border-t border-gray-700 pt-2 mt-2">
-                            {viewDetail.items.map((i: any) => (
-                                <div key={i.id} className="flex justify-between text-sm">
-                                    <span>{i.quantity}x {i.name}</span>
-                                    <span>R$ {(i.price * i.quantity).toFixed(2)}</span>
-                                </div>
-                            ))}
+
+                        <div>
+                            <h4 className="font-bold text-sm text-gray-400 mb-2">Itens</h4>
+                            <ul className="space-y-2">
+                                {viewDetail.items.map((i: any) => (
+                                    <li key={i.id} className="flex justify-between text-sm border-b border-gray-800 pb-1">
+                                        <span><span className="font-bold text-theme-accent">{i.quantity}x</span> {i.name}</span>
+                                        <span>R$ {(i.price * i.quantity).toFixed(2)}</span>
+                                    </li>
+                                ))}
+                            </ul>
                         </div>
-                        <div className="flex justify-between font-bold pt-2 border-t border-gray-700 mt-2">
+                        
+                        <div className="flex justify-between font-bold text-xl pt-2 border-t border-gray-700">
                             <span>Total</span>
                             <span>R$ {viewDetail.total.toFixed(2)}</span>
                         </div>
-                        <p className="text-sm">Pagamento: {viewDetail.paymentMethod}</p>
-                        {viewDetail.paymentMethod === 'money' && <p className="text-sm text-red-400">Troco para: R$ {viewDetail.changeFor}</p>}
+                        <div className="text-xs text-gray-500 text-right">
+                            Pagamento: <span className="uppercase">{viewDetail.paymentMethod}</span>
+                            {viewDetail.changeFor && ` (Troco para R$ ${viewDetail.changeFor})`}
+                        </div>
                     </div>
                 ) : null}
             </Modal>
@@ -824,17 +1011,42 @@ export default function App() {
             {view === 'home' && <PublicPage />}
             
             {view === 'admin' && !adminUser && (
-                <div className="flex items-center justify-center min-h-screen bg-gray-900">
-                    <form onSubmit={handleLogin} className="bg-gray-800 p-8 rounded shadow-lg w-full max-w-sm text-white border border-gray-700">
-                        <h2 className="text-2xl font-bold mb-6 text-center text-theme-accent">Admin Login</h2>
-                        <div className="space-y-4">
-                            <input name="email" type="text" placeholder="Email" className="w-full border border-gray-600 bg-gray-700 p-2 rounded text-white" />
-                            <input name="pass" type="password" placeholder="Senha" className="w-full border border-gray-600 bg-gray-700 p-2 rounded text-white" />
-                            <button className="w-full bg-theme-accent text-white py-2 rounded font-bold hover:opacity-90">ENTRAR</button>
+                <div className="flex items-center justify-center min-h-screen bg-gray-900 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+                    <div className="w-full max-w-md bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700 transform transition-all hover:scale-[1.01]">
+                        <div className="text-center mb-8">
+                            <div className="w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-theme-accent text-theme-accent shadow-lg">
+                                <i className="fas fa-lock text-3xl"></i>
+                            </div>
+                            <h2 className="text-3xl font-bold text-white tracking-tight">Acesso Restrito</h2>
+                            <p className="text-gray-400 text-sm mt-1">Lielson Tattoo Studio</p>
                         </div>
-                        <p className="text-xs text-center mt-4 text-gray-400">Padrão: admin@admin / admin</p>
-                        <a href="#" className="block text-center mt-2 text-theme-accent text-sm">Voltar ao site</a>
-                    </form>
+                        
+                        <form onSubmit={handleLogin} className="space-y-5">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">E-mail</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-3 text-gray-500"><i className="fas fa-envelope"></i></span>
+                                    <input name="email" type="text" placeholder="admin@admin.com" className="w-full border border-gray-600 bg-gray-900 bg-opacity-50 pl-10 p-3 rounded-lg text-white focus:ring-2 focus:ring-theme-accent focus:border-transparent outline-none transition" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">Senha</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-3 text-gray-500"><i className="fas fa-key"></i></span>
+                                    <input name="pass" type="password" placeholder="••••••••" className="w-full border border-gray-600 bg-gray-900 bg-opacity-50 pl-10 p-3 rounded-lg text-white focus:ring-2 focus:ring-theme-accent focus:border-transparent outline-none transition" />
+                                </div>
+                            </div>
+                            <button className="w-full bg-gradient-to-r from-orange-600 to-amber-600 text-white py-3 rounded-lg font-bold shadow-lg hover:shadow-xl hover:opacity-90 transition transform active:scale-95 uppercase tracking-wide">
+                                Entrar no Painel
+                            </button>
+                        </form>
+                        
+                        <div className="mt-6 text-center">
+                             <a href="#" className="text-gray-500 hover:text-white text-sm transition flex items-center justify-center gap-2">
+                                <i className="fas fa-arrow-left"></i> Voltar ao site
+                             </a>
+                        </div>
+                    </div>
                 </div>
             )}
 
