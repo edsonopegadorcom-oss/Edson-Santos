@@ -648,6 +648,14 @@ const PublicPage: React.FC = () => {
     const [checkoutData, setCheckoutData] = useState<Partial<Order>>({ delivery: false, paymentMethod: 'money' });
     const [orderSummary, setOrderSummary] = useState({sub: 0, disc: 0, total: 0, code: ''});
 
+    // Helper for Service Options
+    const SERVICE_OPTIONS = [
+        { id: ServiceType.HAIRCUT, icon: 'fa-cut', price: 25, label: 'Corte de Cabelo' },
+        { id: ServiceType.BEARD, icon: 'fa-user-tie', price: 9, label: 'Barba' },
+        { id: ServiceType.FOOT, icon: 'fa-shoe-prints', price: 10, label: 'Pé de Cabelo' },
+        { id: 'custom-tattoo', icon: 'fa-dragon', price: 0, label: 'Tatuagem (Orçamento)' },
+    ];
+
     // Load Data Async
     useEffect(() => {
         const load = async () => {
@@ -768,6 +776,7 @@ const PublicPage: React.FC = () => {
     };
 
     const inputClasses = "w-full border border-gray-600 bg-gray-700 text-white p-2 rounded focus:ring-2 focus:ring-theme-accent outline-none placeholder-gray-400";
+    const selectedService = SERVICE_OPTIONS.find(s => s.id === apptForm.service);
 
     if (!config) return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Carregando...</div>;
 
@@ -812,83 +821,151 @@ const PublicPage: React.FC = () => {
 
             <div className="container mx-auto p-4 space-y-12">
                 
-                {/* Scheduling Section */}
-                <section id="agendamento" className="bg-gray-800 text-white rounded-lg shadow-lg p-6 -mt-8 relative z-10 border border-gray-700">
-                    <h3 className="text-2xl font-bold text-theme-accent mb-6 border-b border-gray-700 pb-2">Agendar Horário</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-1 text-gray-300">Serviço</label>
-                                <select 
-                                    className={inputClasses}
-                                    value={apptForm.service}
-                                    onChange={(e) => setApptForm({...apptForm, service: e.target.value})}
-                                >
-                                    {Object.values(ServiceType).map(s => <option key={s} value={s} className="bg-gray-800">{s}</option>)}
-                                    <option value="custom-tattoo" className="bg-gray-800">Tatuagem (Orçamento/Sessão)</option>
-                                </select>
-                                <div className="text-sm text-theme-accent mt-1 font-bold">
-                                    {apptForm.service === ServiceType.HAIRCUT ? 'R$ 25,00' : apptForm.service === ServiceType.BEARD ? 'R$ 9,00' : apptForm.service === ServiceType.FOOT ? 'R$ 10,00' : 'Preço a combinar'}
-                                </div>
-                            </div>
-
-                            {apptForm.service === 'custom-tattoo' && (
-                                <div className="bg-gray-700 bg-opacity-50 p-4 rounded border border-dashed border-gray-600 space-y-3 animate-slideIn">
-                                    <h4 className="font-semibold text-sm text-gray-300">Detalhes da Tattoo</h4>
-                                    <input type="text" placeholder="Local do corpo (ex: Braço)" className={inputClasses} value={apptForm.tattooLocation} onChange={e => setApptForm({...apptForm, tattooLocation: e.target.value})} />
-                                    <input type="text" placeholder="Tamanho aprox. (ex: 15cm)" className={inputClasses} value={apptForm.tattooSize} onChange={e => setApptForm({...apptForm, tattooSize: e.target.value})} />
-                                    <label className="block text-xs text-gray-400">Referência (Imagem)</label>
-                                    <input type="file" accept="image/*" onChange={(e) => {
-                                        if (e.target.files?.[0]) {
-                                            if(e.target.files[0].size > 2000000) return alert("Imagem muito grande (Max 2MB)");
-                                            const reader = new FileReader();
-                                            reader.onload = (ev) => setTattooImg(ev.target?.result as string);
-                                            reader.readAsDataURL(e.target.files[0]);
-                                        }
-                                    }} className="text-sm text-gray-400" />
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <input type="text" placeholder="Seu Nome" className={inputClasses} value={apptForm.name} onChange={e => setApptForm({...apptForm, name: e.target.value})} />
-                                <input type="tel" placeholder="WhatsApp (99) 9..." className={inputClasses} value={apptForm.phone} onChange={e => setApptForm({...apptForm, phone: e.target.value})} />
-                            </div>
+                {/* Scheduling Section - Professional Redesign */}
+                <section id="agendamento" className="relative z-10 -mt-8">
+                     <div className="bg-gray-800 bg-opacity-95 backdrop-blur-md rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
+                        <div className="p-6 md:p-8 bg-gradient-to-r from-gray-800 to-gray-900 border-b border-gray-700">
+                             <h3 className="text-3xl font-bold text-white flex items-center gap-3">
+                                <i className="fas fa-calendar-alt text-theme-accent"></i> 
+                                Agendamento
+                             </h3>
+                             <p className="text-gray-400 mt-2">Escolha seu serviço, data e horário. É rápido e fácil.</p>
                         </div>
 
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-1 text-gray-300">Data</label>
-                                <input type="date" min={new Date().toISOString().split('T')[0]} className={inputClasses} value={apptForm.date} onChange={e => setApptForm({...apptForm, date: e.target.value})} />
-                            </div>
-                            
-                            {apptForm.date && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-gray-700">
+                            {/* Left Column: Selection */}
+                            <div className="p-6 md:p-8 space-y-8">
                                 <div>
-                                    <label className="block text-sm font-medium mb-1 text-gray-300">Horários Disponíveis</label>
-                                    {availableSlots.length > 0 ? (
-                                        <div className="grid grid-cols-4 gap-2">
-                                            {availableSlots.map(time => (
-                                                <button 
-                                                    key={time} 
-                                                    onClick={() => setApptForm({...apptForm, time})}
-                                                    className={`py-1 text-sm rounded border ${apptForm.time === time ? 'bg-theme-accent text-white border-transparent shadow-lg transform scale-105' : 'border-gray-600 hover:bg-gray-700 text-gray-300'}`}
-                                                >
-                                                    {time}
-                                                </button>
-                                            ))}
-                                        </div>
+                                    <label className="block text-sm font-bold text-theme-accent uppercase mb-3 tracking-wide">1. Escolha o Serviço</label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {SERVICE_OPTIONS.map(opt => (
+                                            <button 
+                                                key={opt.id}
+                                                onClick={() => setApptForm({...apptForm, service: opt.id})}
+                                                className={`p-4 rounded-xl border-2 transition-all duration-300 text-left relative overflow-hidden group ${apptForm.service === opt.id ? 'border-theme-accent bg-gray-700 shadow-lg scale-[1.02]' : 'border-gray-600 bg-gray-800 hover:border-gray-500'}`}
+                                            >
+                                                <div className={`text-2xl mb-2 transition-colors ${apptForm.service === opt.id ? 'text-theme-accent' : 'text-gray-500 group-hover:text-white'}`}>
+                                                    <i className={`fas ${opt.icon}`}></i>
+                                                </div>
+                                                <div className="font-bold text-sm text-white">{opt.label}</div>
+                                                <div className="text-xs text-gray-400 mt-1">
+                                                    {opt.price > 0 ? `R$ ${opt.price},00` : 'A combinar'}
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-bold text-theme-accent uppercase mb-3 tracking-wide">2. Data e Hora</label>
+                                    <div className="bg-gray-700 p-2 rounded-lg border border-gray-600 mb-4 flex items-center gap-3">
+                                        <i className="fas fa-calendar-day text-gray-400 ml-2"></i>
+                                        <input 
+                                            type="date" 
+                                            min={new Date().toISOString().split('T')[0]} 
+                                            className="bg-transparent text-white w-full outline-none font-bold"
+                                            value={apptForm.date} 
+                                            onChange={e => setApptForm({...apptForm, date: e.target.value})} 
+                                        />
+                                    </div>
+                                    
+                                    {apptForm.date ? (
+                                        availableSlots.length > 0 ? (
+                                            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 animate-slideIn">
+                                                {availableSlots.map(time => (
+                                                    <button 
+                                                        key={time} 
+                                                        onClick={() => setApptForm({...apptForm, time})}
+                                                        className={`py-2 text-xs font-bold rounded-lg border transition ${apptForm.time === time ? 'bg-theme-accent text-white border-theme-accent shadow-md transform scale-105' : 'border-gray-600 hover:bg-gray-600 text-gray-300'}`}
+                                                    >
+                                                        {time}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="text-center p-4 bg-red-900 bg-opacity-20 rounded border border-red-800 text-red-400 text-sm">
+                                                <i className="fas fa-ban mr-2"></i> Sem horários para esta data.
+                                            </div>
+                                        )
                                     ) : (
-                                        <p className="text-red-400 text-sm">Nenhum horário disponível ou data fechada.</p>
+                                        <p className="text-xs text-gray-500 italic">Selecione uma data acima para ver os horários.</p>
                                     )}
                                 </div>
-                            )}
+                            </div>
 
-                            <textarea placeholder="Observações..." className={`${inputClasses} h-20`} value={apptForm.notes} onChange={e => setApptForm({...apptForm, notes: e.target.value})}></textarea>
-                            
-                            <button onClick={submitAppointment} className="w-full bg-theme-accent text-white font-bold py-3 rounded hover:opacity-90 transition shadow-lg uppercase tracking-wide">
-                                CONFIRMAR AGENDAMENTO
-                            </button>
+                            {/* Right Column: Details & Summary */}
+                            <div className="p-6 md:p-8 flex flex-col justify-between bg-gray-900 bg-opacity-50">
+                                <div className="space-y-6">
+                                    <div>
+                                        <label className="block text-sm font-bold text-theme-accent uppercase mb-3 tracking-wide">3. Seus Dados</label>
+                                        <div className="space-y-4">
+                                            <div className="relative">
+                                                <i className="fas fa-user absolute left-3 top-3.5 text-gray-500"></i>
+                                                <input type="text" placeholder="Nome Completo" className={`${inputClasses} pl-10`} value={apptForm.name} onChange={e => setApptForm({...apptForm, name: e.target.value})} />
+                                            </div>
+                                            <div className="relative">
+                                                <i className="fab fa-whatsapp absolute left-3 top-3.5 text-gray-500"></i>
+                                                <input type="tel" placeholder="WhatsApp (DDD) 9..." className={`${inputClasses} pl-10`} value={apptForm.phone} onChange={e => setApptForm({...apptForm, phone: e.target.value})} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {apptForm.service === 'custom-tattoo' && (
+                                        <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 space-y-3 animate-slideIn">
+                                            <h4 className="font-bold text-sm text-white flex items-center gap-2"><i className="fas fa-pencil-alt text-theme-accent"></i> Detalhes da Tattoo</h4>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <input type="text" placeholder="Local (ex: Braço)" className={`${inputClasses} text-xs`} value={apptForm.tattooLocation} onChange={e => setApptForm({...apptForm, tattooLocation: e.target.value})} />
+                                                <input type="text" placeholder="Tamanho (cm)" className={`${inputClasses} text-xs`} value={apptForm.tattooSize} onChange={e => setApptForm({...apptForm, tattooSize: e.target.value})} />
+                                            </div>
+                                            <div className="relative group cursor-pointer">
+                                                <div className="border-2 border-dashed border-gray-600 rounded-lg p-3 text-center group-hover:border-theme-accent transition">
+                                                    <i className="fas fa-cloud-upload-alt text-2xl text-gray-500 mb-1"></i>
+                                                    <p className="text-[10px] text-gray-400">Clique para enviar referência</p>
+                                                </div>
+                                                <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => {
+                                                    if (e.target.files?.[0]) {
+                                                        const reader = new FileReader();
+                                                        reader.onload = (ev) => setTattooImg(ev.target?.result as string);
+                                                        reader.readAsDataURL(e.target.files[0]);
+                                                    }
+                                                }} />
+                                            </div>
+                                            {tattooImg && <p className="text-green-500 text-xs text-center"><i className="fas fa-check"></i> Imagem carregada</p>}
+                                        </div>
+                                    )}
+                                    
+                                    <textarea placeholder="Alguma observação especial?" className={`${inputClasses} h-20 text-sm`} value={apptForm.notes} onChange={e => setApptForm({...apptForm, notes: e.target.value})}></textarea>
+                                </div>
+
+                                <div className="mt-8 pt-6 border-t border-gray-700">
+                                    <div className="bg-gray-800 p-4 rounded-lg border-l-4 border-theme-accent mb-4">
+                                        <h4 className="font-bold text-gray-300 text-xs uppercase mb-2">Resumo do Agendamento</h4>
+                                        <div className="flex justify-between items-end">
+                                            <div className="text-sm text-white">
+                                                <p><span className="text-gray-500">Serviço:</span> {selectedService?.label}</p>
+                                                <p><span className="text-gray-500">Data:</span> {apptForm.date ? apptForm.date.split('-').reverse().join('/') : '--/--'}</p>
+                                                <p><span className="text-gray-500">Hora:</span> {apptForm.time || '--:--'}</p>
+                                            </div>
+                                            <div className="text-xl font-bold text-theme-accent">
+                                                {selectedService && selectedService.price > 0 ? `R$ ${selectedService.price}` : 'A Combinar'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={submitAppointment} 
+                                        disabled={!apptForm.date || !apptForm.time || !apptForm.name || !apptForm.phone}
+                                        className={`w-full py-4 rounded-lg font-bold text-lg uppercase tracking-wider shadow-lg transition transform ${
+                                            (!apptForm.date || !apptForm.time || !apptForm.name || !apptForm.phone) 
+                                            ? 'bg-gray-700 text-gray-500 cursor-not-allowed' 
+                                            : 'bg-gradient-to-r from-theme-accent to-orange-700 text-white hover:scale-[1.02] hover:shadow-xl'
+                                        }`}
+                                    >
+                                        Confirmar Agendamento
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                     </div>
                 </section>
 
                 {/* Shop Section */}
