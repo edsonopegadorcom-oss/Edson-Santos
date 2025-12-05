@@ -19,6 +19,9 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     const [services, setServices] = useState<ServiceItem[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [viewDetail, setViewDetail] = useState<any>(null);
+    
+    // Mobile Menu State
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     // Config Form States
     const [newLogo, setNewLogo] = useState('');
@@ -164,7 +167,10 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     // --- Sidebar Component ---
     const SidebarItem = ({ id, icon, label }: { id: typeof activeTab, icon: string, label: string }) => (
         <button 
-            onClick={() => setActiveTab(id)}
+            onClick={() => {
+                setActiveTab(id);
+                setIsMobileMenuOpen(false); // Close mobile menu on click
+            }}
             className={`w-full flex items-center gap-3 px-4 py-3 transition-colors ${activeTab === id ? 'bg-theme-accent text-white shadow-lg' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
         >
             <i className={`fas fa-${icon} w-6 text-center`}></i>
@@ -172,45 +178,78 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         </button>
     );
 
+    // Sidebar Content Logic (Reused for desktop and mobile)
+    const SidebarContent = () => (
+        <>
+            <div className="p-6 border-b border-gray-800 flex flex-col items-center">
+                {config.logoBase64 ? (
+                    <img src={config.logoBase64} className="h-16 w-16 rounded-full object-cover border-2 border-theme-accent mb-3"/>
+                ) : (
+                    <div className="h-16 w-16 bg-gray-800 rounded-full flex items-center justify-center border-2 border-gray-700 mb-3 text-2xl">
+                       <i className="fas fa-user-shield"></i>
+                    </div>
+                )}
+                <h2 className="text-lg font-bold tracking-wide">Painel Admin</h2>
+                <p className="text-xs text-gray-500">Lielson Tattoo Studio</p>
+            </div>
+            
+            <nav className="flex-1 py-6 space-y-1">
+                <SidebarItem id="dashboard" icon="chart-line" label="Visão Geral" />
+                <SidebarItem id="appointments" icon="calendar-check" label="Agendamentos" />
+                <SidebarItem id="services" icon="cut" label="Serviços" />
+                <SidebarItem id="orders" icon="shopping-bag" label="Pedidos" />
+                <SidebarItem id="products" icon="box-open" label="Produtos" />
+                <SidebarItem id="config" icon="cog" label="Configurações" />
+            </nav>
+
+            <div className="p-4 border-t border-gray-800">
+                <button onClick={onLogout} className="w-full flex items-center justify-center gap-2 text-red-400 hover:text-red-300 transition py-2 text-sm uppercase font-bold tracking-wider">
+                    <i className="fas fa-sign-out-alt"></i> Sair
+                </button>
+            </div>
+        </>
+    );
+
     return (
         <div className="flex h-screen bg-gray-100 overflow-hidden font-sans">
-            {/* Sidebar */}
-            <aside className="w-64 bg-gray-900 text-white flex flex-col shadow-2xl z-20 hidden md:flex">
-                <div className="p-6 border-b border-gray-800 flex flex-col items-center">
-                    {config.logoBase64 ? (
-                        <img src={config.logoBase64} className="h-16 w-16 rounded-full object-cover border-2 border-theme-accent mb-3"/>
-                    ) : (
-                        <div className="h-16 w-16 bg-gray-800 rounded-full flex items-center justify-center border-2 border-gray-700 mb-3 text-2xl">
-                           <i className="fas fa-user-shield"></i>
-                        </div>
-                    )}
-                    <h2 className="text-lg font-bold tracking-wide">Painel Admin</h2>
-                    <p className="text-xs text-gray-500">Lielson Tattoo Studio</p>
-                </div>
-                
-                <nav className="flex-1 py-6 space-y-1">
-                    <SidebarItem id="dashboard" icon="chart-line" label="Visão Geral" />
-                    <SidebarItem id="appointments" icon="calendar-check" label="Agendamentos" />
-                    <SidebarItem id="services" icon="cut" label="Serviços" />
-                    <SidebarItem id="orders" icon="shopping-bag" label="Pedidos" />
-                    <SidebarItem id="products" icon="box-open" label="Produtos" />
-                    <SidebarItem id="config" icon="cog" label="Configurações" />
-                </nav>
-
-                <div className="p-4 border-t border-gray-800">
-                    <button onClick={onLogout} className="w-full flex items-center justify-center gap-2 text-red-400 hover:text-red-300 transition py-2 text-sm uppercase font-bold tracking-wider">
-                        <i className="fas fa-sign-out-alt"></i> Sair
-                    </button>
-                </div>
+            {/* Desktop Sidebar */}
+            <aside className="w-64 bg-gray-900 text-white flex-col shadow-2xl z-20 hidden md:flex">
+                <SidebarContent />
             </aside>
+            
+            {/* Mobile Sidebar (Drawer) */}
+            {isMobileMenuOpen && (
+                <div className="fixed inset-0 z-50 flex md:hidden">
+                    {/* Backdrop */}
+                    <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setIsMobileMenuOpen(false)}></div>
+                    {/* Drawer Content */}
+                    <aside className="relative w-64 bg-gray-900 text-white flex flex-col shadow-2xl h-full animate-slideIn" style={{ animationName: 'slideInLeft' }}> {/* Using a left slide animation would be ideal, falling back to simple render */}
+                        <div className="absolute top-2 right-2">
+                             <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 text-gray-400 hover:text-white"><i className="fas fa-times"></i></button>
+                        </div>
+                        <SidebarContent />
+                    </aside>
+                </div>
+            )}
             
             {/* Main Content */}
             <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
                 {/* Top Header */}
-                <header className="bg-white shadow-sm h-16 flex items-center justify-between px-8 z-10">
-                    <h2 className="text-xl font-bold text-gray-700 capitalize">
-                        {activeTab === 'dashboard' ? 'Visão Geral' : activeTab}
-                    </h2>
+                <header className="bg-white shadow-sm h-16 flex items-center justify-between px-4 md:px-8 z-10">
+                    <div className="flex items-center gap-4">
+                        {/* Mobile Menu Button */}
+                        <button 
+                            onClick={() => setIsMobileMenuOpen(true)} 
+                            className="md:hidden text-gray-600 hover:text-theme-accent focus:outline-none text-xl p-2"
+                        >
+                            <i className="fas fa-bars"></i>
+                        </button>
+                        
+                        <h2 className="text-xl font-bold text-gray-700 capitalize">
+                            {activeTab === 'dashboard' ? 'Visão Geral' : activeTab}
+                        </h2>
+                    </div>
+                    
                     <div className="flex items-center gap-4">
                         <div className="text-right">
                             <p className="text-sm font-bold text-gray-700">Administrador</p>
@@ -222,7 +261,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 </header>
 
                 {/* Content Scroll Area */}
-                <div className="flex-1 overflow-y-auto p-8">
+                <div className="flex-1 overflow-y-auto p-4 md:p-8">
                     
                     {activeTab === 'dashboard' && (
                         <div className="space-y-8">
@@ -294,8 +333,8 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                     )}
 
                     {activeTab === 'appointments' && (
-                         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            <table className="w-full text-left border-collapse">
+                         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[600px]">
                                 <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider font-semibold border-b">
                                     <tr>
                                         <th className="p-4">Data/Hora</th>
@@ -328,7 +367,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                                     {a.status}
                                                 </span>
                                             </td>
-                                            <td className="p-4 text-right space-x-2">
+                                            <td className="p-4 text-right space-x-2 min-w-[120px]">
                                                 {a.status === 'PENDENTE' && (
                                                     <button onClick={() => handleApptAction(a.id, AppointmentStatus.CONFIRMED)} className="text-white bg-green-500 hover:bg-green-600 w-8 h-8 rounded-full shadow transition" title="Confirmar"><i className="fas fa-check"></i></button>
                                                 )}
@@ -378,7 +417,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                          </div>
                                          <div className="flex-1">
                                              <input 
-                                                className="font-bold text-gray-800 border-b border-transparent hover:border-gray-300 focus:border-theme-accent outline-none bg-transparent"
+                                                className="font-bold text-gray-800 border-b border-transparent hover:border-gray-300 focus:border-theme-accent outline-none bg-transparent w-full"
                                                 value={s.name}
                                                 onChange={(e) => {
                                                     const updated = services.map(x => x.id === s.id ? {...x, name: e.target.value} : x);
@@ -387,7 +426,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                                 onBlur={() => StorageService.saveService(s)}
                                              />
                                          </div>
-                                         <div className="flex items-center gap-4">
+                                         <div className="flex items-center gap-2 md:gap-4">
                                              <div className="relative">
                                                  <span className="absolute left-2 top-1 text-xs text-gray-400">R$</span>
                                                  <input 
@@ -411,8 +450,8 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                     )}
 
                     {activeTab === 'orders' && (
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                        <table className="w-full text-left border-collapse">
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[700px]">
                             <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider font-semibold border-b">
                                 <tr>
                                     <th className="p-4">#ID / Data</th>
@@ -452,7 +491,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                                     {o.status}
                                             </span>
                                         </td>
-                                        <td className="p-4 text-right space-x-2">
+                                        <td className="p-4 text-right space-x-2 min-w-[120px]">
                                             {o.status === 'PENDENTE' && <button onClick={() => handleOrderAction(o.id, OrderStatus.CONFIRMED)} className="text-white bg-green-500 hover:bg-green-600 w-8 h-8 rounded-full shadow transition"><i className="fas fa-check"></i></button>}
                                             {o.status === 'CONFIRMADO' && o.delivery && <button onClick={() => handleOrderAction(o.id, OrderStatus.DELIVERED)} className="text-white bg-gray-700 hover:bg-gray-800 w-8 h-8 rounded-full shadow transition"><i className="fas fa-truck"></i></button>}
                                             <button onClick={() => setViewDetail(o)} className="text-gray-600 bg-gray-200 hover:bg-gray-300 w-8 h-8 rounded-full shadow transition"><i className="fas fa-eye"></i></button>
@@ -874,12 +913,17 @@ const PublicPage: React.FC = () => {
              {publicTab === 'home' && (
                  <>
                     {/* Hero with Tattoo Image */}
-                    <header className="relative h-[550px] flex items-center justify-center text-center text-white overflow-hidden">
-                        {/* Background Image */}
-                        <div className="absolute inset-0 bg-cover bg-center bg-no-repeat bg-fixed transform scale-105" style={{backgroundImage: "url('https://images.unsplash.com/photo-1590246294580-8c22d6455217?q=80&w=2000&auto=format&fit=crop')"}}></div>
+                    <header className="relative h-[600px] flex items-center justify-center text-center text-white overflow-hidden bg-gray-900">
+                        {/* Background Image - Replacing css background with img tag for better mobile support */}
+                        <img 
+                            src="https://images.unsplash.com/photo-1590246294580-8c22d6455217?q=80&w=2000&auto=format&fit=crop" 
+                            className="absolute inset-0 w-full h-full object-cover object-center"
+                            alt="Mulher com tatuagem"
+                        />
                         
-                        {/* Gradient Overlay for Text Readability */}
-                        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/80"></div>
+                        {/* Dark Overlay */}
+                        <div className="absolute inset-0 bg-black/60"></div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-black/40"></div>
                         
                         <div className="relative z-10 max-w-3xl mx-auto px-6 animate-fadeIn">
                             <div className="mb-4 inline-block px-3 py-1 border border-white/30 rounded-full text-xs font-bold uppercase tracking-widest bg-white/10 backdrop-blur-md">
