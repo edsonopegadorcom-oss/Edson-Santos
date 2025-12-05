@@ -19,11 +19,17 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     const [categories, setCategories] = useState<Category[]>([]);
     const [viewDetail, setViewDetail] = useState<any>(null);
 
+    // Config Form States
+    const [newLogo, setNewLogo] = useState('');
+    const [editEmail, setEditEmail] = useState('');
+    const [editPass, setEditPass] = useState('');
+
     // Realtime Subscriptions & Async Load
     useEffect(() => {
         const loadStatic = async () => {
             const conf = await StorageService.getConfig();
             setConfig(conf);
+            setEditEmail(conf.adminEmail); // Pre-fill email
             const cats = await StorageService.getCategories();
             setCategories(cats);
         };
@@ -77,16 +83,26 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         alert("Produto Salvo!");
     };
 
-    // Config State
-    const [newLogo, setNewLogo] = useState('');
+    // Config Save Logic
     const saveConfig = async () => {
         if (!config) return;
+
+        // Calculate password hash if changed
+        let passHash = config.adminPassHash;
+        if (editPass && editPass.trim() !== '') {
+            passHash = simpleHash(editPass);
+        }
+
         const newConf = {
             ...config,
-            logoBase64: newLogo || config.logoBase64
+            logoBase64: newLogo || config.logoBase64,
+            adminEmail: editEmail || config.adminEmail,
+            adminPassHash: passHash
         };
+
         await StorageService.saveConfig(newConf);
-        alert("Configurações salvas. Atualize a página para ver o novo tema.");
+        setEditPass(''); // Clear password field after save
+        alert("Configurações salvas com sucesso!");
     };
     
     // Stats Logic
@@ -447,6 +463,32 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                         </div>
                                     </div>
                                  </div>
+                             </div>
+
+                             {/* Security Config */}
+                             <div className="mb-8">
+                                <h4 className="font-bold text-gray-700 mb-2 border-b pb-1"><i className="fas fa-lock text-xs mr-1"></i> Segurança e Acesso</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                                    <div>
+                                        <label className="block text-sm text-gray-600 mb-1">E-mail do Admin</label>
+                                        <input 
+                                            type="email" 
+                                            className="w-full border p-2 rounded text-sm bg-gray-50 focus:ring-1 focus:ring-theme-accent outline-none" 
+                                            value={editEmail}
+                                            onChange={(e) => setEditEmail(e.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm text-gray-600 mb-1">Nova Senha</label>
+                                        <input 
+                                            type="password" 
+                                            className="w-full border p-2 rounded text-sm bg-gray-50 focus:ring-1 focus:ring-theme-accent outline-none" 
+                                            placeholder="Deixe em branco para manter"
+                                            value={editPass}
+                                            onChange={(e) => setEditPass(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
                              </div>
 
                              <div>
@@ -1026,7 +1068,7 @@ export default function App() {
                                 <label className="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">E-mail</label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-3 text-gray-500"><i className="fas fa-envelope"></i></span>
-                                    <input name="email" type="text" placeholder="admin@admin.com" className="w-full border border-gray-600 bg-gray-900 bg-opacity-50 pl-10 p-3 rounded-lg text-white focus:ring-2 focus:ring-theme-accent focus:border-transparent outline-none transition" />
+                                    <input name="email" type="text" placeholder="Digite seu e-mail" className="w-full border border-gray-600 bg-gray-900 bg-opacity-50 pl-10 p-3 rounded-lg text-white focus:ring-2 focus:ring-theme-accent focus:border-transparent outline-none transition" />
                                 </div>
                             </div>
                             <div>
