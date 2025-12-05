@@ -14,6 +14,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ isOpen, onClose, cart,
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const updateQty = (id: string, delta: number) => {
     setCart(prev => prev.map(item => {
@@ -24,15 +25,23 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ isOpen, onClose, cart,
     }).filter(i => i.quantity > 0));
   };
 
-  const checkCoupon = () => {
-    const coupons = StorageService.getCoupons();
-    const found = coupons.find(c => c.code.toUpperCase() === couponCode.toUpperCase() && c.active);
-    if (found) {
-      setAppliedCoupon(found);
-      setCouponError('');
-    } else {
-      setAppliedCoupon(null);
-      setCouponError('Cupom inválido ou inativo');
+  const checkCoupon = async () => {
+    setLoading(true);
+    setCouponError('');
+    try {
+        const coupons = await StorageService.getCoupons();
+        const found = coupons.find(c => c.code.toUpperCase() === couponCode.toUpperCase() && c.active);
+        if (found) {
+          setAppliedCoupon(found);
+          setCouponError('');
+        } else {
+          setAppliedCoupon(null);
+          setCouponError('Cupom inválido ou inativo');
+        }
+    } catch (error) {
+        setCouponError('Erro ao validar cupom.');
+    } finally {
+        setLoading(false);
     }
   };
 
@@ -83,7 +92,9 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ isOpen, onClose, cart,
                         className="flex-1 border border-gray-700 bg-gray-800 text-white p-2 rounded text-sm uppercase placeholder-gray-500 focus:outline-none focus:border-theme-accent"
                         placeholder="Código"
                     />
-                    <button onClick={checkCoupon} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition">Aplicar</button>
+                    <button onClick={checkCoupon} disabled={loading} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition">
+                        {loading ? '...' : 'Aplicar'}
+                    </button>
                 </div>
                 {appliedCoupon && <p className="text-green-500 text-xs mt-1">Desconto de {appliedCoupon.percent}% aplicado!</p>}
                 {couponError && <p className="text-red-500 text-xs mt-1">{couponError}</p>}

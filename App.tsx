@@ -7,44 +7,57 @@ import {
 } from './types';
 import { StorageService, generateId, simpleHash } from './services/storageService';
 
-// --- Sub-components for specific pages to keep file count low as requested ---
+// --- Sub-components for specific pages ---
 
 // --- 1. ADMIN PANEL ---
 const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     const [tab, setTab] = useState<'appointments' | 'orders' | 'products' | 'config' | 'reports'>('appointments');
-    const [config, setConfig] = useState<AdminConfig>(StorageService.getConfig());
+    const [config, setConfig] = useState<AdminConfig | null>(null);
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
     const [viewDetail, setViewDetail] = useState<any>(null); // For modals
 
-    // Load data on mount and tab change
+    // Realtime Subscriptions & Async Load
     useEffect(() => {
-        setAppointments(StorageService.getAppointments().sort((a,b) => b.createdAt - a.createdAt));
-        setOrders(StorageService.getOrders().sort((a,b) => b.createdAt - a.createdAt));
-        setProducts(StorageService.getProducts());
-        setConfig(StorageService.getConfig());
-    }, [tab]);
+        // Load Static/One-time data
+        const loadStatic = async () => {
+            const conf = await StorageService.getConfig();
+            setConfig(conf);
+            const cats = await StorageService.getCategories();
+            setCategories(cats);
+        };
+        loadStatic();
 
-    const handleApptAction = (id: string, status: AppointmentStatus) => {
+        // Subscriptions
+        const unsubAppt = StorageService.subscribeAppointments(setAppointments);
+        const unsubOrders = StorageService.subscribeOrders(setOrders);
+        const unsubProds = StorageService.subscribeProducts(setProducts);
+
+        return () => {
+            unsubAppt();
+            unsubOrders();
+            unsubProds();
+        };
+    }, []);
+
+    const handleApptAction = async (id: string, status: AppointmentStatus) => {
         const appt = appointments.find(a => a.id === id);
         if (appt) {
-            const updated = { ...appt, status };
-            StorageService.updateAppointment(updated);
-            setAppointments(prev => prev.map(a => a.id === id ? updated : a));
+            await StorageService.updateAppointment({ ...appt, status });
         }
     };
 
-    const handleOrderAction = (id: string, status: OrderStatus) => {
+    const handleOrderAction = async (id: string, status: OrderStatus) => {
         const order = orders.find(o => o.id === id);
         if (order) {
             const updated = { ...order, status };
             // If confirming, reduce stock if not already done (simplified logic)
             if (status === OrderStatus.CONFIRMED && order.status !== OrderStatus.CONFIRMED) {
-                StorageService.updateStock(order.items.map(i => ({ id: i.id, qty: i.quantity })));
+                await StorageService.updateStock(order.items.map(i => ({ id: i.id, qty: i.quantity })));
             }
-            StorageService.updateOrder(updated);
-            setOrders(prev => prev.map(o => o.id === id ? updated : o));
+            await StorageService.updateOrder(updated);
         }
     };
     
@@ -52,19 +65,18 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     const [newProd, setNewProd] = useState<Partial<Product>>({});
     const [prodImg, setProdImg] = useState('');
 
-    const saveProduct = () => {
+    const saveProduct = async () => {
         if (!newProd.name || !newProd.price) return alert("Preencha dados básicos");
         const prod: Product = {
             id: generateId(),
-            categoryId: newProd.categoryId || 'c1',
+            categoryId: newProd.categoryId || categories[0]?.id || 'c1',
             name: newProd.name,
             description: newProd.description || '',
             price: Number(newProd.price),
             stock: Number(newProd.stock || 0),
             imageBase64: prodImg
         };
-        StorageService.saveProduct(prod);
-        setProducts([...products, prod]);
+        await StorageService.saveProduct(prod);
         setNewProd({});
         setProdImg('');
         alert("Produto Salvo!");
@@ -72,12 +84,14 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
     // Config State
     const [newLogo, setNewLogo] = useState('');
-    const saveConfig = () => {
-        StorageService.saveConfig({
+    const saveConfig = async () => {
+        if (!config) return;
+        const newConf = {
             ...config,
             logoBase64: newLogo || config.logoBase64
-        });
-        alert("Configurações salvas. Recarregue a página para ver mudanças visuais.");
+        };
+        await StorageService.saveConfig(newConf);
+        alert("Configurações salvas. Atualize a página para ver o novo tema.");
     };
     
     // Reports Logic
@@ -102,11 +116,15 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     
     const stats = getStats();
 
+    if (!config) return <div className="p-8 text-center">Carregando Painel...</div>;
+
     return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto text-gray-800">
-            <div className="flex justify-between items-center mb-8">
-                <h1 className="text-2xl font-bold">Painel Administrativo</h1>
-                <button onClick={onLogout} className="text-red-600 hover:text-red-800 underline">Sair</button>
+            <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+                <h1 className="text-2xl font-bold">Painel Administrativo (Online)</h1>
+                <div className="flex items-center gap-4">
+                    <button onClick={onLogout} className="text-red-600 hover:text-red-800 underline">Sair</button>
+                </div>
             </div>
 
             {/* Tabs */}
@@ -126,45 +144,55 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             <div className="bg-white rounded shadow p-4 min-h-[400px]">
                 {tab === 'appointments' && (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-100">
-                                <tr>
-                                    <th className="p-3">Data/Hora</th>
-                                    <th className="p-3">Cliente</th>
-                                    <th className="p-3">Serviço</th>
-                                    <th className="p-3">Status</th>
-                                    <th className="p-3">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {appointments.map(a => (
-                                    <tr key={a.id} className="border-b hover:bg-gray-50">
-                                        <td className="p-3">{a.date.split('-').reverse().join('/')} às {a.time}</td>
-                                        <td className="p-3">
-                                            {a.name}<br/>
-                                            <a href={`https://wa.me/${a.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="text-green-600 text-xs hover:underline">
-                                                <i className="fab fa-whatsapp"></i> {a.phone}
-                                            </a>
-                                        </td>
-                                        <td className="p-3">{a.serviceName}</td>
-                                        <td className="p-3">
-                                            <span className={`px-2 py-1 rounded text-xs text-white ${a.status === 'CONFIRMADO' ? 'bg-green-500' : a.status === 'CANCELADO' ? 'bg-red-500' : 'bg-yellow-500'}`}>
-                                                {a.status}
-                                            </span>
-                                        </td>
-                                        <td className="p-3 flex gap-2">
-                                            {a.status === 'PENDENTE' && (
-                                                <button onClick={() => handleApptAction(a.id, AppointmentStatus.CONFIRMED)} className="text-green-600 hover:bg-green-100 p-1 rounded" title="Confirmar"><i className="fas fa-check"></i></button>
-                                            )}
-                                            {a.status !== 'CANCELADO' && (
-                                                <button onClick={() => handleApptAction(a.id, AppointmentStatus.CANCELLED)} className="text-red-600 hover:bg-red-100 p-1 rounded" title="Cancelar"><i className="fas fa-times"></i></button>
-                                            )}
-                                            <button onClick={() => setViewDetail(a)} className="text-blue-600 hover:bg-blue-100 p-1 rounded" title="Ver Detalhes"><i className="fas fa-eye"></i></button>
-                                        </td>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-lg">Lista de Agendamentos ({appointments.length})</h3>
+                        </div>
+                        {appointments.length === 0 ? (
+                            <p className="text-gray-500 text-center py-8">Nenhum agendamento encontrado.</p>
+                        ) : (
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-100">
+                                    <tr>
+                                        <th className="p-3">Data/Hora</th>
+                                        <th className="p-3">Cliente</th>
+                                        <th className="p-3">Serviço</th>
+                                        <th className="p-3">Status</th>
+                                        <th className="p-3">Ações</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    {appointments.map(a => (
+                                        <tr key={a.id} className="border-b hover:bg-gray-50">
+                                            <td className="p-3">
+                                                {a.date.split('-').reverse().join('/')} <br/>
+                                                <span className="font-bold">{a.time}</span>
+                                            </td>
+                                            <td className="p-3">
+                                                {a.name}<br/>
+                                                <a href={`https://wa.me/55${a.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="text-green-600 text-xs hover:underline">
+                                                    <i className="fab fa-whatsapp"></i> {a.phone}
+                                                </a>
+                                            </td>
+                                            <td className="p-3">{a.serviceName}</td>
+                                            <td className="p-3">
+                                                <span className={`px-2 py-1 rounded text-xs text-white ${a.status === 'CONFIRMADO' ? 'bg-green-500' : a.status === 'CANCELADO' ? 'bg-red-500' : 'bg-yellow-500'}`}>
+                                                    {a.status}
+                                                </span>
+                                            </td>
+                                            <td className="p-3 flex gap-2">
+                                                {a.status === 'PENDENTE' && (
+                                                    <button onClick={() => handleApptAction(a.id, AppointmentStatus.CONFIRMED)} className="text-green-600 hover:bg-green-100 p-1 rounded" title="Confirmar"><i className="fas fa-check"></i></button>
+                                                )}
+                                                {a.status !== 'CANCELADO' && (
+                                                    <button onClick={() => handleApptAction(a.id, AppointmentStatus.CANCELLED)} className="text-red-600 hover:bg-red-100 p-1 rounded" title="Cancelar"><i className="fas fa-times"></i></button>
+                                                )}
+                                                <button onClick={() => setViewDetail(a)} className="text-blue-600 hover:bg-blue-100 p-1 rounded" title="Ver Detalhes"><i className="fas fa-eye"></i></button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
                     </div>
                 )}
 
@@ -214,7 +242,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                 <input className="border p-2 rounded" type="number" placeholder="Preço" value={newProd.price || ''} onChange={e => setNewProd({...newProd, price: parseFloat(e.target.value)})} />
                                 <input className="border p-2 rounded" type="number" placeholder="Estoque" value={newProd.stock || ''} onChange={e => setNewProd({...newProd, stock: parseInt(e.target.value)})} />
                                 <select className="border p-2 rounded" value={newProd.categoryId} onChange={e => setNewProd({...newProd, categoryId: e.target.value})}>
-                                    {StorageService.getCategories().map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                 </select>
                                 <div className="col-span-2">
                                     <label className="block text-xs mb-1">Imagem</label>
@@ -241,14 +269,9 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                     </div>
                 )}
 
-                {tab === 'config' && (
+                {tab === 'config' && config && (
                    <div className="space-y-4 max-w-md">
                        <h3 className="font-bold">Aparência & Logo</h3>
-                       <div className="bg-blue-50 p-4 rounded border border-blue-200 mb-4">
-                           <p className="text-sm text-blue-800">
-                               <strong>Atenção:</strong> Como este é um sistema sem backend, faça o upload da logo aqui para vê-la no site.
-                           </p>
-                       </div>
                        <div>
                            <label className="block text-sm">Cor Primária (Fundo/Texto)</label>
                            <input type="color" value={config.primaryColor} onChange={e => setConfig({...config, primaryColor: e.target.value})} className="h-10 w-full cursor-pointer"/>
@@ -317,7 +340,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 )}
             </div>
 
-            {/* Detail Modal - Using Portal based Modal Component (Dark Theme applied in Layout) */}
+            {/* Detail Modal */}
             <Modal isOpen={!!viewDetail} onClose={() => setViewDetail(null)} title="Detalhes">
                 {viewDetail && 'serviceName' in viewDetail ? (
                     // Appointment Details
@@ -325,6 +348,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                         <p><strong>Cliente:</strong> {viewDetail.name}</p>
                         <p><strong>Serviço:</strong> {viewDetail.serviceName}</p>
                         <p><strong>Data:</strong> {viewDetail.date} às {viewDetail.time}</p>
+                        <p><strong>Status Atual:</strong> {viewDetail.status}</p>
                         {viewDetail.tattooBase64 && (
                             <div className="my-2">
                                 <p className="font-bold text-sm">Referência Tattoo:</p>
@@ -369,7 +393,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
 // --- 2. PUBLIC PAGE ---
 const PublicPage: React.FC = () => {
-    const config = StorageService.getConfig();
+    const [config, setConfig] = useState<AdminConfig | null>(null);
     const [cartOpen, setCartOpen] = useState(false);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
@@ -395,14 +419,22 @@ const PublicPage: React.FC = () => {
     const [checkoutData, setCheckoutData] = useState<Partial<Order>>({ delivery: false, paymentMethod: 'money' });
     const [orderSummary, setOrderSummary] = useState({sub: 0, disc: 0, total: 0, code: ''});
 
+    // Load Data Async
     useEffect(() => {
-        setProducts(StorageService.getProducts());
-        setCategories(StorageService.getCategories());
+        const load = async () => {
+            const c = await StorageService.getConfig();
+            setConfig(c);
+            const p = await StorageService.getProducts();
+            setProducts(p);
+            const cats = await StorageService.getCategories();
+            setCategories(cats);
+        };
+        load();
     }, []);
 
-    // Time Slot Logic
+    // Time Slot Logic (Async fetch of existing appointments)
     useEffect(() => {
-        if (!apptForm.date) return;
+        if (!apptForm.date || !config) return;
         
         // Check if date is closed
         if (config.closedDates.includes(apptForm.date)) {
@@ -410,14 +442,22 @@ const PublicPage: React.FC = () => {
             return;
         }
 
-        const allSlots = ['09:00','09:30','10:00','10:30','11:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00'];
-        const existing = StorageService.getAppointments();
-        const taken = existing
-            .filter(a => a.date === apptForm.date && a.status !== AppointmentStatus.CANCELLED)
-            .map(a => a.time);
-        
-        setAvailableSlots(allSlots.filter(s => !taken.includes(s)));
-    }, [apptForm.date, config.closedDates]);
+        const fetchSlots = async () => {
+            // Optimization: In a real large app, query only for this date. 
+            // For now, we fetch all (as per previous logic) but async.
+            const existing = await StorageService.getAppointmentsOnce();
+            
+            const allSlots = ['09:00','09:30','10:00','10:30','11:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00'];
+            
+            const taken = existing
+                .filter(a => a.date === apptForm.date && a.status !== AppointmentStatus.CANCELLED)
+                .map(a => a.time);
+            
+            setAvailableSlots(allSlots.filter(s => !taken.includes(s)));
+        };
+        fetchSlots();
+
+    }, [apptForm.date, config]);
 
     const handleAddToCart = (p: Product) => {
         setCart(prev => {
@@ -434,7 +474,7 @@ const PublicPage: React.FC = () => {
         setCartOpen(true);
     };
 
-    const submitAppointment = () => {
+    const submitAppointment = async () => {
         if (!apptForm.name || !apptForm.phone || !apptForm.date || !apptForm.time) {
             alert("Preencha todos os campos obrigatórios");
             return;
@@ -457,13 +497,18 @@ const PublicPage: React.FC = () => {
             createdAt: Date.now()
         };
 
-        StorageService.saveAppointment(appt);
+        await StorageService.saveAppointment(appt);
+        
         alert(`Agendamento enviado com sucesso! Aguarde a confirmação no WhatsApp.`);
         setApptForm({ ...apptForm, name: '', phone: '', date: '', time: '' });
         setTattooImg('');
+        // Trigger re-fetch of slots
+        const tempDate = apptForm.date;
+        setApptForm(prev => ({...prev, date: ''}));
+        setTimeout(() => setApptForm(prev => ({...prev, date: tempDate})), 100);
     };
 
-    const submitOrder = () => {
+    const submitOrder = async () => {
         if (!checkoutData.clientName || !checkoutData.phone) return alert("Nome e Telefone são obrigatórios");
         if (checkoutData.delivery && (!checkoutData.address?.street || !checkoutData.address.neighborhood)) return alert("Endereço incompleto");
 
@@ -485,7 +530,8 @@ const PublicPage: React.FC = () => {
             createdAt: Date.now()
         };
 
-        StorageService.saveOrder(order);
+        await StorageService.saveOrder(order);
+        
         alert("Pedido Enviado! Entraremos em contato.");
         setCart([]);
         setCartOpen(false);
@@ -493,6 +539,8 @@ const PublicPage: React.FC = () => {
     };
 
     const inputClasses = "w-full border border-gray-600 bg-gray-700 text-white p-2 rounded focus:ring-2 focus:ring-theme-accent outline-none placeholder-gray-400";
+
+    if (!config) return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Carregando...</div>;
 
     return (
         <div className="pb-20 bg-gray-900 min-h-screen">
@@ -655,7 +703,8 @@ const PublicPage: React.FC = () => {
                 <footer className="border-t border-gray-800 pt-8 pb-4 text-center text-gray-500">
                     <p className="mb-2"><i className="fas fa-map-marker-alt"></i> Rua Exemplo, 123 - Centro</p>
                     <p className="mb-4"><i className="fab fa-whatsapp"></i> (00) 90000-0000</p>
-                    <p className="text-xs">&copy; 2023 Lielson Tattoo Studio. Todos os direitos reservados.</p>
+                    <p className="text-xs mb-2">&copy; 2023 Lielson Tattoo Studio. Todos os direitos reservados.</p>
+                    <a href="#admin" className="text-[10px] text-gray-700 hover:text-gray-400 uppercase tracking-widest">Área Administrativa</a>
                 </footer>
             </div>
 
@@ -749,17 +798,18 @@ export default function App() {
         if (session) setAdminUser(true);
     }, []);
 
-    const handleLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         const email = (e.target as any).email.value;
         const pass = (e.target as any).pass.value;
         
-        const config = StorageService.getConfig();
+        // Fetch config from DB
+        const config = await StorageService.getConfig();
         if (email === config.adminEmail && simpleHash(pass) === config.adminPassHash) {
             sessionStorage.setItem('lt_session', 'true');
             setAdminUser(true);
         } else {
-            alert('Credenciais inválidas');
+            alert('Credenciais inválidas ou erro de conexão');
         }
     };
 

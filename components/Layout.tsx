@@ -7,11 +7,13 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   useEffect(() => {
-    // Apply dynamic theme
-    const config = StorageService.getConfig();
-    const root = document.documentElement;
-    root.style.setProperty('--primary', config.primaryColor);
-    root.style.setProperty('--accent', config.accentColor);
+    const loadTheme = async () => {
+        const config = await StorageService.getConfig();
+        const root = document.documentElement;
+        if (config.primaryColor) root.style.setProperty('--primary', config.primaryColor);
+        if (config.accentColor) root.style.setProperty('--accent', config.accentColor);
+    };
+    loadTheme();
   }, []);
 
   return (

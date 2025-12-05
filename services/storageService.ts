@@ -1,25 +1,24 @@
 import { 
-  Appointment, Product, Category, Order, Coupon, AdminConfig, 
-  ServiceType, AppointmentStatus 
+  Appointment, Product, Category, Order, Coupon, AdminConfig 
 } from '../types';
+import { db } from './firebase';
+import { 
+  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, 
+  onSnapshot, query, orderBy, where, writeBatch 
+} from 'firebase/firestore';
 
-// Keys
-const K = {
-  ADMIN: 'lt_admin',
-  APPOINTMENTS: 'lt_appointments',
-  PRODUCTS: 'lt_products',
-  CATEGORIES: 'lt_categories',
-  ORDERS: 'lt_orders',
-  COUPONS: 'lt_coupons',
-  CLOSED_DATES: 'lt_closed_dates' // Kept separate or inside admin, user req says separate logic, but admin config has it too. We will sync.
+// Collection Names
+const C = {
+  CONFIG: 'config', // doc id: 'main'
+  APPOINTMENTS: 'appointments',
+  PRODUCTS: 'products',
+  CATEGORIES: 'categories',
+  ORDERS: 'orders',
+  COUPONS: 'coupons'
 };
 
 // --- Helpers ---
-
-// Generate ID: Timestamp + Random string
-export const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
-
-// Simple hash for demo (NOT SECURE FOR PROD)
+export const generateId = () => doc(collection(db, 'dummy')).id; // Use Firestore auto-id logic
 export const simpleHash = (str: string) => {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -30,117 +29,141 @@ export const simpleHash = (str: string) => {
   return hash.toString();
 };
 
-// Seed Data
-const seedData = () => {
-  if (!localStorage.getItem(K.ADMIN)) {
-    const defaultAdmin: AdminConfig = {
-      logoBase64: '', // Empty means default text
-      primaryColor: '#0f0f0f', // Deep Black
-      accentColor: '#dc2626', // Red-600
-      adminEmail: 'admin@admin',
-      adminPassHash: simpleHash('admin'),
-      closedDates: []
-    };
-    localStorage.setItem(K.ADMIN, JSON.stringify(defaultAdmin));
-  }
-
-  if (!localStorage.getItem(K.CATEGORIES)) {
-    const cats: Category[] = [
-      { id: 'c1', name: 'Piercing' },
-      { id: 'c2', name: 'Aftercare' },
-      { id: 'c3', name: 'Merch' }
-    ];
-    localStorage.setItem(K.CATEGORIES, JSON.stringify(cats));
-  }
-
-  if (!localStorage.getItem(K.PRODUCTS)) {
-    const prods: Product[] = [
-      { id: 'p1', categoryId: 'c2', name: 'Pomada Cicatrizante', description: 'Para melhor cicatrização da sua tattoo.', price: 15.00, stock: 20, imageBase64: '' },
-      { id: 'p2', categoryId: 'c1', name: 'Piercing Básico Titânio', description: 'Joia de alta qualidade.', price: 40.00, stock: 10, imageBase64: '' }
-    ];
-    localStorage.setItem(K.PRODUCTS, JSON.stringify(prods));
-  }
-  
-  if (!localStorage.getItem(K.COUPONS)) {
-      const coupons: Coupon[] = [
-          { code: 'BEMVINDO', percent: 20, active: true }
-      ];
-      localStorage.setItem(K.COUPONS, JSON.stringify(coupons));
-  }
-  
-  if (!localStorage.getItem(K.APPOINTMENTS)) localStorage.setItem(K.APPOINTMENTS, JSON.stringify([]));
-  if (!localStorage.getItem(K.ORDERS)) localStorage.setItem(K.ORDERS, JSON.stringify([]));
-};
-
-// Initialize
-seedData();
-
-// --- CRUD ---
+// --- Service ---
 
 export const StorageService = {
-  // Admin & Config
-  getConfig: (): AdminConfig => JSON.parse(localStorage.getItem(K.ADMIN) || '{}'),
-  saveConfig: (config: AdminConfig) => localStorage.setItem(K.ADMIN, JSON.stringify(config)),
   
-  // Appointments
-  getAppointments: (): Appointment[] => JSON.parse(localStorage.getItem(K.APPOINTMENTS) || '[]'),
-  saveAppointment: (appt: Appointment) => {
-    /* BACKEND MIGRATION: Replace with POST /api/appointments */
-    const list = StorageService.getAppointments();
-    list.push(appt);
-    localStorage.setItem(K.APPOINTMENTS, JSON.stringify(list));
+  // --- CONFIG (Single Document) ---
+  getConfig: async (): Promise<AdminConfig> => {
+    try {
+      const ref = doc(db, C.CONFIG, 'main');
+      const snap = await getDoc(ref);
+      if (snap.exists()) return snap.data() as AdminConfig;
+      
+      // Default Config if not exists
+      const defaultConf: AdminConfig = {
+        logoBase64: '',
+        primaryColor: '#111827',
+        accentColor: '#D97706',
+        adminEmail: 'admin@admin',
+        adminPassHash: simpleHash('admin'),
+        closedDates: []
+      };
+      // Create it
+      await setDoc(ref, defaultConf);
+      return defaultConf;
+    } catch (e) {
+      console.error("Erro ao obter config:", e);
+      // Fallback local em caso de erro de rede/api key faltando
+      return { logoBase64: '', primaryColor: '#111827', accentColor: '#D97706', adminEmail: 'admin@admin', adminPassHash: '0', closedDates: [] };
+    }
   },
-  updateAppointment: (updated: Appointment) => {
-    /* BACKEND MIGRATION: Replace with PUT /api/appointments/:id */
-    const list = StorageService.getAppointments().map(a => a.id === updated.id ? updated : a);
-    localStorage.setItem(K.APPOINTMENTS, JSON.stringify(list));
+
+  saveConfig: async (config: AdminConfig) => {
+    await setDoc(doc(db, C.CONFIG, 'main'), config);
   },
-  
-  // Products & Cats
-  getProducts: (): Product[] => JSON.parse(localStorage.getItem(K.PRODUCTS) || '[]'),
-  getCategories: (): Category[] => JSON.parse(localStorage.getItem(K.CATEGORIES) || '[]'),
-  saveProduct: (prod: Product) => {
-      const list = StorageService.getProducts();
-      const idx = list.findIndex(p => p.id === prod.id);
-      if (idx >= 0) list[idx] = prod;
-      else list.push(prod);
-      localStorage.setItem(K.PRODUCTS, JSON.stringify(list));
+
+  // --- APPOINTMENTS ---
+  // Realtime Listener
+  subscribeAppointments: (callback: (data: Appointment[]) => void) => {
+    const q = query(collection(db, C.APPOINTMENTS), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as Appointment));
+      callback(list);
+    });
   },
-  saveCategory: (cat: Category) => {
-      const list = StorageService.getCategories();
-      list.push(cat);
-      localStorage.setItem(K.CATEGORIES, JSON.stringify(list));
+
+  getAppointmentsOnce: async (): Promise<Appointment[]> => {
+    const q = query(collection(db, C.APPOINTMENTS), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Appointment));
   },
-  updateStock: (items: {id: string, qty: number}[]) => {
-      const products = StorageService.getProducts();
-      items.forEach(item => {
-          const p = products.find(x => x.id === item.id);
-          if (p) p.stock = Math.max(0, p.stock - item.qty);
+
+  saveAppointment: async (appt: Appointment) => {
+    // Firestore creates ID automatically if using addDoc, but we want to handle the ID object
+    const { id, ...data } = appt; 
+    // If ID is provided manually in object
+    await setDoc(doc(db, C.APPOINTMENTS, id), data);
+  },
+
+  updateAppointment: async (appt: Appointment) => {
+    const { id, ...data } = appt;
+    await updateDoc(doc(db, C.APPOINTMENTS, id), data as any);
+  },
+
+  // --- PRODUCTS ---
+  getProducts: async (): Promise<Product[]> => {
+    const snap = await getDocs(collection(db, C.PRODUCTS));
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Product));
+  },
+
+  subscribeProducts: (callback: (data: Product[]) => void) => {
+      return onSnapshot(collection(db, C.PRODUCTS), (snap) => {
+          callback(snap.docs.map(d => ({...d.data(), id: d.id} as Product)));
       });
-      localStorage.setItem(K.PRODUCTS, JSON.stringify(products));
   },
 
-  // Orders
-  getOrders: (): Order[] => JSON.parse(localStorage.getItem(K.ORDERS) || '[]'),
-  saveOrder: (order: Order) => {
-    /* BACKEND MIGRATION: Replace with POST /api/orders */
-    const list = StorageService.getOrders();
-    list.push(order);
-    localStorage.setItem(K.ORDERS, JSON.stringify(list));
-  },
-  updateOrder: (updated: Order) => {
-    const list = StorageService.getOrders().map(o => o.id === updated.id ? updated : o);
-    localStorage.setItem(K.ORDERS, JSON.stringify(list));
+  saveProduct: async (prod: Product) => {
+    const { id, ...data } = prod;
+    await setDoc(doc(db, C.PRODUCTS, id), data);
   },
 
-  // Coupons
-  getCoupons: (): Coupon[] => JSON.parse(localStorage.getItem(K.COUPONS) || '[]'),
-  saveCoupon: (coupon: Coupon) => {
-      const list = StorageService.getCoupons();
-      // overwrite if exists
-      const idx = list.findIndex(c => c.code === coupon.code);
-      if (idx >= 0) list[idx] = coupon;
-      else list.push(coupon);
-      localStorage.setItem(K.COUPONS, JSON.stringify(list));
+  updateStock: async (items: {id: string, qty: number}[]) => {
+    const batch = writeBatch(db);
+    for (const item of items) {
+        const ref = doc(db, C.PRODUCTS, item.id);
+        const snap = await getDoc(ref);
+        if(snap.exists()) {
+            const current = snap.data().stock || 0;
+            batch.update(ref, { stock: Math.max(0, current - item.qty) });
+        }
+    }
+    await batch.commit();
+  },
+
+  // --- CATEGORIES ---
+  getCategories: async (): Promise<Category[]> => {
+    const snap = await getDocs(collection(db, C.CATEGORIES));
+    let list = snap.docs.map(d => ({ ...d.data(), id: d.id } as Category));
+    if (list.length === 0) {
+        // Seed default
+        const defaults = [
+            { id: 'c1', name: 'Piercing' },
+            { id: 'c2', name: 'Aftercare' },
+            { id: 'c3', name: 'Merch' }
+        ];
+        for(const c of defaults) await setDoc(doc(db, C.CATEGORIES, c.id), c);
+        list = defaults;
+    }
+    return list;
+  },
+
+  // --- ORDERS ---
+  subscribeOrders: (callback: (data: Order[]) => void) => {
+    const q = query(collection(db, C.ORDERS), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snap) => {
+      callback(snap.docs.map(d => ({ ...d.data(), id: d.id } as Order)));
+    });
+  },
+
+  saveOrder: async (order: Order) => {
+    const { id, ...data } = order;
+    await setDoc(doc(db, C.ORDERS, id), data);
+  },
+
+  updateOrder: async (order: Order) => {
+    const { id, ...data } = order;
+    await updateDoc(doc(db, C.ORDERS, id), data as any);
+  },
+
+  // --- COUPONS ---
+  getCoupons: async (): Promise<Coupon[]> => {
+      const snap = await getDocs(collection(db, C.COUPONS));
+      if (snap.empty) {
+          const def = { code: 'BEMVINDO', percent: 20, active: true };
+          await addDoc(collection(db, C.COUPONS), def);
+          return [def];
+      }
+      return snap.docs.map(d => d.data() as Coupon);
   }
 };
