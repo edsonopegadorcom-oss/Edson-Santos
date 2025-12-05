@@ -776,6 +776,18 @@ const PublicPage: React.FC = () => {
     });
     const [tattooRefImg, setTattooRefImg] = useState('');
 
+    // Generate Time Slots (08:00 - 19:00, 30min intervals)
+    const generateTimeSlots = () => {
+        const slots = [];
+        for (let hour = 8; hour < 19; hour++) {
+            slots.push(`${hour.toString().padStart(2, '0')}:00`);
+            slots.push(`${hour.toString().padStart(2, '0')}:30`);
+        }
+        slots.push('19:00');
+        return slots;
+    };
+    const timeSlots = generateTimeSlots();
+
     // Checkout
     const [showCheckout, setShowCheckout] = useState(false);
     const [checkoutData, setCheckoutData] = useState<{subtotal:number, discount:number, total:number, coupon?:string} | null>(null);
@@ -1104,19 +1116,29 @@ const PublicPage: React.FC = () => {
                     <div className="grid grid-cols-2 gap-4">
                         <div className="col-span-2">
                             <label className="text-xs font-bold text-gray-500 uppercase">Seu Nome</label>
-                            <input required className="w-full border p-2 rounded bg-gray-50" value={bookingForm.name} onChange={e => setBookingForm({...bookingForm, name: e.target.value})} />
+                            <input required className="w-full border border-gray-300 p-2 rounded bg-white text-gray-900 focus:ring-2 focus:ring-theme-accent outline-none" value={bookingForm.name} onChange={e => setBookingForm({...bookingForm, name: e.target.value})} />
                         </div>
                         <div className="col-span-2">
                             <label className="text-xs font-bold text-gray-500 uppercase">WhatsApp</label>
-                            <input required className="w-full border p-2 rounded bg-gray-50" placeholder="(00) 00000-0000" value={bookingForm.phone} onChange={e => setBookingForm({...bookingForm, phone: e.target.value})} />
+                            <input required className="w-full border border-gray-300 p-2 rounded bg-white text-gray-900 focus:ring-2 focus:ring-theme-accent outline-none" placeholder="(00) 00000-0000" value={bookingForm.phone} onChange={e => setBookingForm({...bookingForm, phone: e.target.value})} />
                         </div>
                         <div>
                             <label className="text-xs font-bold text-gray-500 uppercase">Data</label>
-                            <input required type="date" className="w-full border p-2 rounded bg-gray-50" value={bookingForm.date} onChange={e => setBookingForm({...bookingForm, date: e.target.value})} />
+                            <input required type="date" className="w-full border border-gray-300 p-2 rounded bg-white text-gray-900 focus:ring-2 focus:ring-theme-accent outline-none" value={bookingForm.date} onChange={e => setBookingForm({...bookingForm, date: e.target.value})} />
                         </div>
                         <div>
                             <label className="text-xs font-bold text-gray-500 uppercase">Hora</label>
-                            <input required type="time" className="w-full border p-2 rounded bg-gray-50" value={bookingForm.time} onChange={e => setBookingForm({...bookingForm, time: e.target.value})} />
+                            <select 
+                                required 
+                                className="w-full border border-gray-300 p-2 rounded bg-white text-gray-900 focus:ring-2 focus:ring-theme-accent outline-none appearance-none" 
+                                value={bookingForm.time} 
+                                onChange={e => setBookingForm({...bookingForm, time: e.target.value})}
+                            >
+                                <option value="" disabled>Selecione...</option>
+                                {timeSlots.map(time => (
+                                    <option key={time} value={time}>{time}</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
                     
@@ -1124,12 +1146,12 @@ const PublicPage: React.FC = () => {
                         <div className="bg-gray-50 p-3 rounded border border-gray-200 space-y-3">
                             <p className="font-bold text-sm text-gray-800">Detalhes da Tatuagem</p>
                             <div className="grid grid-cols-2 gap-3">
-                                <input placeholder="Tamanho (ex: 15cm)" className="border p-2 rounded" value={bookingForm.tattooSize} onChange={e => setBookingForm({...bookingForm, tattooSize: e.target.value})} />
-                                <input placeholder="Local do corpo" className="border p-2 rounded" value={bookingForm.tattooLocation} onChange={e => setBookingForm({...bookingForm, tattooLocation: e.target.value})} />
+                                <input placeholder="Tamanho (ex: 15cm)" className="border border-gray-300 p-2 rounded bg-white text-gray-900 focus:ring-2 focus:ring-theme-accent outline-none" value={bookingForm.tattooSize} onChange={e => setBookingForm({...bookingForm, tattooSize: e.target.value})} />
+                                <input placeholder="Local do corpo" className="border border-gray-300 p-2 rounded bg-white text-gray-900 focus:ring-2 focus:ring-theme-accent outline-none" value={bookingForm.tattooLocation} onChange={e => setBookingForm({...bookingForm, tattooLocation: e.target.value})} />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Referência (Imagem)</label>
-                                <input type="file" className="text-sm" onChange={(e) => {
+                                <input type="file" className="text-sm text-gray-900" onChange={(e) => {
                                     if(e.target.files?.[0]) {
                                         const r = new FileReader();
                                         r.onload = (ev) => setTattooRefImg(ev.target?.result as string);
@@ -1143,7 +1165,7 @@ const PublicPage: React.FC = () => {
                     
                     <div>
                          <label className="text-xs font-bold text-gray-500 uppercase">Observações</label>
-                         <textarea className="w-full border p-2 rounded bg-gray-50" rows={2} value={bookingForm.notes} onChange={e => setBookingForm({...bookingForm, notes: e.target.value})}></textarea>
+                         <textarea className="w-full border border-gray-300 p-2 rounded bg-white text-gray-900 focus:ring-2 focus:ring-theme-accent outline-none" rows={2} value={bookingForm.notes} onChange={e => setBookingForm({...bookingForm, notes: e.target.value})}></textarea>
                     </div>
 
                     <button className="w-full bg-theme-accent text-white font-bold py-3 rounded shadow-lg hover:opacity-90 transition">Confirmar Agendamento</button>
