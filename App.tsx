@@ -353,7 +353,16 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                             </td>
                                             <td className="p-4">
                                                 <div className="font-medium">{a.name}</div>
-                                                <a href={`https://wa.me/55${a.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="text-green-600 text-xs hover:underline flex items-center gap-1 mt-1">
+                                                <a 
+                                                    href={`https://wa.me/55${a.phone.replace(/\D/g,'')}?text=${
+                                                        a.serviceId === 'custom-tattoo' 
+                                                        ? encodeURIComponent("Olá, aqui é o Liesson Tattoo. Para confirmar seu agendamento, é necessário pagar 20% do valor da tatuagem antecipadamente. Os 80% restantes devem ser pagos no dia.\nO orçamento da sua tatuagem ficou no valor de (__).")
+                                                        : encodeURIComponent(`Olá ${a.name}, tudo bem? Sobre seu agendamento de ${a.serviceName}.`)
+                                                    }`} 
+                                                    target="_blank" 
+                                                    rel="noreferrer" 
+                                                    className="text-green-600 text-xs hover:underline flex items-center gap-1 mt-1"
+                                                >
                                                     <i className="fab fa-whatsapp"></i> {a.phone}
                                                 </a>
                                             </td>
